@@ -259,6 +259,8 @@ class BubblinGame {
     this.combo = 0;
     this.loadStage(1);
     this.state = 'PLAYING';
+    soundManager.startBgm();
+    soundManager.setBgmDucking(false);
   }
 
   public nextStage(): void {
@@ -266,6 +268,7 @@ class BubblinGame {
     this.confettiList = [];
     this.loadStage(this.currentStageId + 1);
     this.state = 'PLAYING';
+    soundManager.setBgmDucking(false);
   }
 
   public restartGame(): void {
@@ -497,6 +500,7 @@ class BubblinGame {
       // Check stage clear
       if (countOccupiedBubbles(this.grid) === 0) {
         this.state = 'STAGE_CLEAR';
+        soundManager.setBgmDucking(true);
         soundManager.playStageClear();
         this.triggerConfetti();
         const isFinal = this.currentStageId === 30;
@@ -550,6 +554,7 @@ class BubblinGame {
 
   private gameOver(): void {
     this.state = 'GAME_OVER';
+    soundManager.stopBgm();
     soundManager.playGameOver();
     this.renderer.triggerShake(12);
     setTimeout(() => {

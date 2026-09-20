@@ -15,7 +15,8 @@ export class UIManager {
   private highScoreEl: HTMLElement;
   private stageEl: HTMLElement;
   private shotsCounterEl: HTMLElement;
-  private muteBtn: HTMLButtonElement;
+  private bgmBtn: HTMLButtonElement;
+  private seBtn: HTMLButtonElement;
 
   // Modals
   private titleModal: HTMLElement;
@@ -42,7 +43,8 @@ export class UIManager {
     this.highScoreEl = document.getElementById('highscore-value')!;
     this.stageEl = document.getElementById('stage-value')!;
     this.shotsCounterEl = document.getElementById('shots-dots')!;
-    this.muteBtn = document.getElementById('mute-btn') as HTMLButtonElement;
+    this.bgmBtn = document.getElementById('bgm-btn') as HTMLButtonElement;
+    this.seBtn = document.getElementById('se-btn') as HTMLButtonElement;
 
     this.titleModal = document.getElementById('title-modal')!;
     this.stageClearModal = document.getElementById('stage-clear-modal')!;
@@ -58,7 +60,7 @@ export class UIManager {
     this.rightAimBtn = document.getElementById('aim-right-btn');
 
     this.setupEventListeners();
-    this.updateMuteButton();
+    this.updateAudioButtons();
   }
 
   private setupEventListeners(): void {
@@ -78,10 +80,15 @@ export class UIManager {
       this.callbacks.onRestartGame();
     });
 
-    // Mute button
-    this.muteBtn.addEventListener('click', () => {
-      soundManager.toggleMute();
-      this.updateMuteButton();
+    // Audio buttons
+    this.bgmBtn?.addEventListener('click', () => {
+      soundManager.toggleBgm();
+      this.updateAudioButtons();
+    });
+
+    this.seBtn?.addEventListener('click', () => {
+      soundManager.toggleSe();
+      this.updateAudioButtons();
     });
 
     // Launch button
@@ -222,9 +229,22 @@ export class UIManager {
     this.gameOverModal.classList.remove('hidden');
   }
 
-  private updateMuteButton(): void {
-    const isMuted = soundManager.getMuted();
-    this.muteBtn.innerHTML = isMuted ? '🔇' : '🔊';
-    this.muteBtn.title = isMuted ? 'Unmute Sound' : 'Mute Sound';
+  private updateAudioButtons(): void {
+    const isBgmMuted = soundManager.getBgmMuted();
+    const isSeMuted = soundManager.getSeMuted();
+
+    if (this.bgmBtn) {
+      this.bgmBtn.innerHTML = isBgmMuted ? '🔇' : '🎵';
+      this.bgmBtn.title = isBgmMuted ? 'BGM ON' : 'BGM OFF';
+      this.bgmBtn.setAttribute('aria-label', isBgmMuted ? 'Unmute BGM' : 'Mute BGM');
+      this.bgmBtn.classList.toggle('muted', isBgmMuted);
+    }
+
+    if (this.seBtn) {
+      this.seBtn.innerHTML = isSeMuted ? '🔈' : '🔊';
+      this.seBtn.title = isSeMuted ? 'SE ON' : 'SE OFF';
+      this.seBtn.setAttribute('aria-label', isSeMuted ? 'Unmute Sound Effects' : 'Mute Sound Effects');
+      this.seBtn.classList.toggle('muted', isSeMuted);
+    }
   }
 }

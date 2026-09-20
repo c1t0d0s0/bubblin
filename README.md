@@ -21,9 +21,11 @@ Playable seamlessly on both desktop and mobile devices, Bubblin' features glossy
   - **Floor Fireworks**: Dropped bubbles explode into colorful firework sparks and bonus score floaters upon hitting the bottom.
   - **Arcade Achievement Banners**: Glowing neon badges for `GREAT`, `EXCELLENT`, `AMAZING`, and `LEGENDARY` drops.
 - **Ceiling Descent & Deadline**: Countdown meter lowers the ceiling bar when missed shots accumulate; crossing the deadline triggers Game Over.
-- **Procedural Audio Engine**: 100% synthesized in Web Audio API without external audio files:
+- **Procedural Retro BGM & Audio Engine**: 100% synthesized in Web Audio API with zero external audio files:
+  - **128 BPM 16-bar Retro-Pop BGM**: Multi-track looping track composed of dual-square lead synth, triangle bubble arpeggios, walking synth bass, and synthesized drums (kick, noise snare, hi-hats). Powered by a 25ms lookahead scheduler with automatic volume ducking during stage-clear fanfares.
   - Triumphant **Trumpet Brass Fanfare** on stage clear (dual detuned sawtooth brass with resonant filter bite and vibrato).
   - Sub-bass impact thud, cascading reward arpeggios, bubble pop chimes, and wall-bounce ping sounds.
+  - Independent header controls for **BGM (`🎵`)** and **SE (`🔊`)** with `localStorage` persistence.
 - **30 Progressive Stages**: 4 carefully balanced difficulty brackets:
   - **Stages 1–6 (Beginner)**: 3 colors, 7–8 shot countdowns, open bottom layouts.
   - **Stages 7–14 (Novice)**: 4 colors, iconic silhouettes (Heart, Crown, Peaks, Invader).
@@ -40,7 +42,8 @@ Playable seamlessly on both desktop and mobile devices, Bubblin' features glossy
 | **Aim / Steer** | `←` / `→` or `A` / `D` or Mouse Move / Drag | Bottom Lever Slider, `◀` / `▶` Buttons, or Screen Drag |
 | **Shoot (Launch)** | `SPACE` or Left Click | Big `LAUNCH (発射)` Button or Tap |
 | **Swap Bubble** | `↑` or `W` or On-screen Swap Button | `🔄 SWAP` Button |
-| **Mute / Unmute** | `🔊` Button on Header | `🔊` Button on Header |
+| **Toggle BGM** | Header `🎵` Button | Header `🎵` Button |
+| **Toggle SE** | Header `🔊` Button | Header `🔊` Button |
 
 ---
 
