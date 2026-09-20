@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Bubblin' - パズルボブル風パズルゲーム</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-wrapper">
+        <!-- Top HUD Header -->
+        <header id="game-header">
+          <div class="header-left">
+            <h1 class="logo">BUBBLIN'</h1>
+            <div class="stage-badge">
+              STAGE <span id="stage-value">1</span>
+            </div>
+          </div>
+
+          <div class="header-center">
+            <div class="stat-box">
+              <span class="stat-label">SCORE</span>
+              <span class="stat-value" id="score-value">0</span>
+            </div>
+            <div class="stat-box highscore-box">
+              <span class="stat-label">HI-SCORE</span>
+              <span class="stat-value" id="highscore-value">0</span>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <div class="ceiling-meter">
+              <span class="meter-label">DROP IN</span>
+              <div id="shots-dots" class="shots-dots"></div>
+            </div>
+            <button id="mute-btn" class="icon-btn" aria-label="Toggle Sound">🔊</button>
+          </div>
+        </header>
+
+        <!-- Main Game Canvas Container -->
+        <div id="canvas-container">
+          <canvas id="game-canvas"></canvas>
+        </div>
+
+        <!-- Bottom Controls for Mobile & Accessibility -->
+        <footer id="controls-panel">
+          <div class="lever-control-row">
+            <button id="aim-left-btn" class="steer-btn" aria-label="Aim Left">◀</button>
+            <div id="lever-track" class="lever-track" title="左右にドラッグしてエイム">
+              <div class="lever-center-mark"></div>
+              <div id="lever-thumb" class="lever-thumb"></div>
+            </div>
+            <button id="aim-right-btn" class="steer-btn" aria-label="Aim Right">▶</button>
+          </div>
+
+          <div class="action-buttons-row">
+            <button id="swap-btn" class="action-btn swap-action-btn" title="バブルを交代 (↑キー / Wキー)">
+              <span class="btn-icon">🔄</span>
+              <span class="btn-text">SWAP</span>
+            </button>
+            <button id="launch-btn" class="action-btn launch-action-btn" title="バブルを発射 (スペースキー)">
+              <span class="btn-icon">⚡</span>
+              <span class="btn-text">LAUNCH (発射)</span>
+            </button>
+          </div>
+
+          <div class="keyboard-tips">
+            PC操作: [←/→] または [A/D] で旋回, [SPACE] またはクリックで発射, [↑/W] で交代
+          </div>
+        </footer>
+      </div>
+
+      <!-- Title Modal -->
+      <div id="title-modal" class="modal-overlay">
+        <div class="modal-card">
+          <div class="title-graphic">
+            <span class="bubble-title-icon red">B</span>
+            <span class="bubble-title-icon blue">U</span>
+            <span class="bubble-title-icon green">B</span>
+            <span class="bubble-title-icon yellow">B</span>
+            <span class="bubble-title-icon purple">L</span>
+            <span class="bubble-title-icon orange">I</span>
+            <span class="bubble-title-icon red">N</span>
+            <span class="bubble-title-icon blue">'</span>
+          </div>
+          <p class="subtitle">Bubble Pop Arcade Puzzle</p>
+
+          <div class="instructions-box">
+            <h3>ルール & 操作方法</h3>
+            <ul>
+              <li><strong>照準</strong>: 左右のレバー (PCでは左右キー/マウスドラッグ) で狙いを定める</li>
+              <li><strong>発射</strong>: 発射ボタン (PCではスペースキー/クリック) でバブルを射出</li>
+              <li><strong>マッチ3</strong>: 同じ色のバブルを3つ以上つなげると爽快ポップ！</li>
+              <li><strong>大量落下</strong>: 天井から切り離されたバブルはまとめて落下して高得点！</li>
+              <li><strong>天井降下</strong>: 発射を続けると天井が下がります。デッドラインを超えるとゲームオーバー！</li>
+            </ul>
+          </div>
+
+          <button id="start-game-btn" class="modal-btn start-btn">
+            GAME START
+          </button>
+        </div>
+      </div>
+
+      <!-- Stage Clear Modal -->
+      <div id="stage-clear-modal" class="modal-overlay hidden">
+        <div class="modal-card victory">
+          <div class="modal-icon">🎉</div>
+          <h2 id="stage-clear-title">STAGE CLEARED!</h2>
+          <p id="clear-score-val" class="score-display">Score: 0</p>
+          <p class="clear-cheer">EXCELLENT! 素晴らしいプレイ！</p>
+          <button id="next-stage-btn" class="modal-btn next-btn">
+            NEXT STAGE ➔
+          </button>
+        </div>
+      </div>
+
+      <!-- Game Over Modal -->
+      <div id="game-over-modal" class="modal-overlay hidden">
+        <div class="modal-card gameover">
+          <div class="modal-icon">💀</div>
+          <h2>GAME OVER</h2>
+          <p id="game-over-score-val" class="score-display">Score: 0</p>
+          <p class="gameover-sub">バブルがデッドラインを超えてしまいました！</p>
+          <button id="restart-btn" class="modal-btn restart-btn">
+            TRY AGAIN 🔄
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
