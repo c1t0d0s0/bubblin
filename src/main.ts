@@ -1126,8 +1126,11 @@ class BubblinGame {
     let trajectory = null;
     const isCoop = this.playMode === 'COOP';
 
+    // LOOP MODE (after clearing stage 30): hide the aiming guide for extra difficulty
+    const showGuide = this.currentStageId <= 30;
+
     const p1LauncherX = isCoop ? LAUNCHER_COOP_P1_X : LAUNCHER_X;
-    if (this.state === 'PLAYING' && !this.projectile) {
+    if (showGuide && this.state === 'PLAYING' && !this.projectile) {
       trajectory = calculateTrajectory(
         p1LauncherX + Math.sin(this.aimAngle) * BARREL_LENGTH,
         LAUNCHER_Y - Math.cos(this.aimAngle) * BARREL_LENGTH,
@@ -1138,7 +1141,7 @@ class BubblinGame {
     }
 
     let p2Trajectory = null;
-    if (isCoop && this.state === 'PLAYING' && !this.p2Projectile) {
+    if (showGuide && isCoop && this.state === 'PLAYING' && !this.p2Projectile) {
       p2Trajectory = calculateTrajectory(
         LAUNCHER_COOP_P2_X + Math.sin(this.p2AimAngle) * BARREL_LENGTH,
         LAUNCHER_Y - Math.cos(this.p2AimAngle) * BARREL_LENGTH,
