@@ -7,119 +7,70 @@ const F: Record<string, number> = {
   C6: 1046.50, D6: 1174.66, E6: 1318.51, F6: 1396.91, G6: 1567.98
 };
 
-// 16 bars chord progression (C Major / A Minor pop)
-const CHORDS: Array<{ bass: number; arp: number[] }> = [
+// Light, rhythmic BGM: mid-fast tempo, soft drums, plucky voices kept at a low level (16 bars, 256 sixteenth-note steps)
+const BGM_VOLUME = 0.11;
+const BGM_DUCKED_VOLUME = 0.02;
+const BGM_BPM = 112;
+
+// 16 bars chord progression (C Major / A Minor)
+const CHORDS: Array<{ bass: number; pad: number[]; arp: number[] }> = [
   // Verse A (Bars 0-3)
-  { bass: F.C2, arp: [F.C4, F.E4, F.G4, F.C5] }, // 0: C
-  { bass: F.G2, arp: [F.G3, F.B3, F.D4, F.G4] }, // 1: G
-  { bass: F.A2, arp: [F.A3, F.C4, F.E4, F.A4] }, // 2: Am
-  { bass: F.F2, arp: [F.F3, F.A3, F.C4, F.F4] }, // 3: F
+  { bass: F.C2, pad: [F.E3, F.G3, F.C4], arp: [F.C4, F.E4, F.G4, F.E4] }, // 0: C
+  { bass: F.G2, pad: [F.G3, F.B3, F.D4], arp: [F.D4, F.G4, F.B4, F.G4] }, // 1: G
+  { bass: F.A2, pad: [F.E3, F.A3, F.C4], arp: [F.A3, F.C4, F.E4, F.C4] }, // 2: Am
+  { bass: F.F2, pad: [F.F3, F.A3, F.C4], arp: [F.A3, F.C4, F.F4, F.C4] }, // 3: F
   // Verse B (Bars 4-7)
-  { bass: F.C2, arp: [F.C4, F.E4, F.G4, F.C5] }, // 4: C
-  { bass: F.E2, arp: [F.E3, F.G3, F.B3, F.E4] }, // 5: Em
-  { bass: F.F2, arp: [F.F3, F.A3, F.C4, F.F4] }, // 6: F
-  { bass: F.G2, arp: [F.G3, F.B3, F.D4, F.G4] }, // 7: G
+  { bass: F.C2, pad: [F.E3, F.G3, F.C4], arp: [F.C4, F.E4, F.G4, F.E4] }, // 4: C
+  { bass: F.E2, pad: [F.E3, F.G3, F.B3], arp: [F.E4, F.G4, F.B4, F.G4] }, // 5: Em
+  { bass: F.F2, pad: [F.F3, F.A3, F.C4], arp: [F.A3, F.C4, F.F4, F.C4] }, // 6: F
+  { bass: F.G2, pad: [F.G3, F.B3, F.D4], arp: [F.D4, F.G4, F.B4, F.G4] }, // 7: G
   // Chorus A (Bars 8-11)
-  { bass: F.F2, arp: [F.F3, F.A3, F.C4, F.F4] }, // 8: F
-  { bass: F.G2, arp: [F.G3, F.B3, F.D4, F.G4] }, // 9: G
-  { bass: F.E2, arp: [F.E3, F.G3, F.B3, F.E4] }, // 10: Em
-  { bass: F.A2, arp: [F.A3, F.C4, F.E4, F.A4] }, // 11: Am
+  { bass: F.F2, pad: [F.F3, F.A3, F.C4], arp: [F.A3, F.C4, F.F4, F.C4] }, // 8: F
+  { bass: F.G2, pad: [F.G3, F.B3, F.D4], arp: [F.D4, F.G4, F.B4, F.G4] }, // 9: G
+  { bass: F.E2, pad: [F.E3, F.G3, F.B3], arp: [F.E4, F.G4, F.B4, F.G4] }, // 10: Em
+  { bass: F.A2, pad: [F.E3, F.A3, F.C4], arp: [F.A3, F.C4, F.E4, F.C4] }, // 11: Am
   // Chorus B (Bars 12-15)
-  { bass: F.D2, arp: [F.D3, F.F3, F.A3, F.D4] }, // 12: Dm
-  { bass: F.G2, arp: [F.G3, F.B3, F.D4, F.G4] }, // 13: G
-  { bass: F.C2, arp: [F.C4, F.E4, F.G4, F.C5] }, // 14: C
-  { bass: F.G2, arp: [F.G3, F.B3, F.D4, F.F4] }  // 15: G7
+  { bass: F.D2, pad: [F.F3, F.A3, F.D4], arp: [F.D4, F.F4, F.A4, F.F4] }, // 12: Dm
+  { bass: F.G2, pad: [F.G3, F.B3, F.D4], arp: [F.D4, F.G4, F.B4, F.G4] }, // 13: G
+  { bass: F.C2, pad: [F.E3, F.G3, F.C4], arp: [F.C4, F.E4, F.G4, F.E4] }, // 14: C
+  { bass: F.G2, pad: [F.G3, F.B3, F.D4], arp: [F.D4, F.G4, F.B4, F.G4] }  // 15: G
 ];
 
-// Lead melody notes scheduled at step indices (0 to 255)
-const MELODY: Record<number, { freq: number; len: number }> = {
-  // Bar 0
-  0: { freq: F.E5, len: 2 },
-  3: { freq: F.G5, len: 3 },
-  6: { freq: F.A5, len: 2 },
-  8: { freq: F.G5, len: 4 },
-  12: { freq: F.E5, len: 4 },
-  // Bar 1
-  16: { freq: F.D5, len: 4 },
-  20: { freq: F.C5, len: 4 },
-  24: { freq: F.D5, len: 4 },
-  28: { freq: F.E5, len: 4 },
-  // Bar 2
-  32: { freq: F.E5, len: 2 },
-  35: { freq: F.G5, len: 3 },
-  38: { freq: F.C6, len: 4 },
-  42: { freq: F.B5, len: 2 },
-  44: { freq: F.A5, len: 4 },
-  // Bar 3
-  48: { freq: F.G5, len: 6 },
-  56: { freq: F.F5, len: 4 },
-  60: { freq: F.E5, len: 4 },
-  // Bar 4
-  64: { freq: F.E5, len: 3 },
-  68: { freq: F.F5, len: 2 },
-  70: { freq: F.G5, len: 4 },
-  74: { freq: F.A5, len: 3 },
-  78: { freq: F.G5, len: 3 },
-  // Bar 5
-  82: { freq: F.E5, len: 4 },
-  86: { freq: F.D5, len: 4 },
-  90: { freq: F.C5, len: 6 },
-  // Bar 6
-  96: { freq: F.D5, len: 3 },
-  100: { freq: F.E5, len: 3 },
-  104: { freq: F.F5, len: 4 },
-  108: { freq: F.G5, len: 4 },
-  // Bar 7
-  112: { freq: F.G5, len: 8 },
-  120: { freq: F.B5, len: 4 },
-  124: { freq: F.D6, len: 4 },
-  // Bar 8 (Chorus)
-  128: { freq: F.C6, len: 4 },
-  132: { freq: F.B5, len: 2 },
-  134: { freq: F.A5, len: 4 },
-  138: { freq: F.G5, len: 4 },
-  142: { freq: F.A5, len: 2 },
-  // Bar 9
-  144: { freq: F.B5, len: 4 },
-  148: { freq: F.C6, len: 4 },
-  152: { freq: F.D6, len: 6 },
-  // Bar 10
-  160: { freq: F.B5, len: 4 },
-  164: { freq: F.A5, len: 2 },
-  166: { freq: F.G5, len: 4 },
-  170: { freq: F.E5, len: 4 },
-  174: { freq: F.G5, len: 2 },
-  // Bar 11
-  176: { freq: F.A5, len: 8 },
-  184: { freq: F.B5, len: 4 },
-  188: { freq: F.C6, len: 4 },
-  // Bar 12
-  192: { freq: F.F5, len: 3 },
-  196: { freq: F.G5, len: 3 },
-  200: { freq: F.A5, len: 4 },
-  204: { freq: F.G5, len: 3 },
-  207: { freq: F.F5, len: 3 },
-  // Bar 13
-  210: { freq: F.D5, len: 6 },
-  216: { freq: F.E5, len: 2 },
-  218: { freq: F.F5, len: 2 },
-  220: { freq: F.G5, len: 4 },
-  // Bar 14
-  224: { freq: F.C5, len: 3 },
-  228: { freq: F.E5, len: 3 },
-  232: { freq: F.G5, len: 4 },
-  236: { freq: F.C6, len: 6 },
-  // Bar 15 (Turnaround)
-  242: { freq: F.B5, len: 2 },
-  244: { freq: F.A5, len: 2 },
-  246: { freq: F.G5, len: 4 },
-  250: { freq: F.D5, len: 3 },
-  253: { freq: F.E5, len: 3 }
-};
+// Syncopated lead phrases per bar: [step within the bar, note, length in steps]
+const MELODY_BARS: Array<Array<[number, number, number]>> = [
+  // Verse A
+  [[0, F.E5, 2], [3, F.G5, 2], [6, F.E5, 2], [8, F.D5, 2], [10, F.E5, 3], [14, F.C5, 2]], // C
+  [[0, F.D5, 2], [3, F.G5, 2], [6, F.D5, 2], [8, F.B4, 2], [10, F.D5, 3], [14, F.B4, 2]], // G
+  [[0, F.C5, 2], [3, F.E5, 2], [6, F.A5, 2], [8, F.G5, 2], [10, F.E5, 3], [14, F.C5, 2]], // Am
+  [[0, F.A4, 2], [3, F.C5, 2], [6, F.F5, 2], [8, F.E5, 2], [10, F.C5, 3], [14, F.A4, 2]], // F
+  // Verse B
+  [[0, F.E5, 2], [3, F.G5, 2], [6, F.C6, 2], [8, F.B5, 2], [10, F.G5, 3], [14, F.E5, 2]], // C
+  [[0, F.G5, 2], [3, F.E5, 2], [6, F.B4, 2], [8, F.E5, 2], [10, F.G5, 3], [14, F.E5, 2]], // Em
+  [[0, F.A5, 2], [3, F.F5, 2], [6, F.C5, 2], [8, F.F5, 2], [10, F.A5, 3], [14, F.F5, 2]], // F
+  [[0, F.G5, 2], [3, F.D5, 2], [6, F.B4, 2], [8, F.D5, 2], [10, F.G5, 4], [14, F.D5, 2]], // G
+  // Chorus A
+  [[0, F.C6, 2], [3, F.A5, 2], [6, F.F5, 2], [8, F.A5, 2], [10, F.C6, 3], [14, F.A5, 2]], // F
+  [[0, F.B5, 2], [3, F.G5, 2], [6, F.D5, 2], [8, F.G5, 2], [10, F.B5, 3], [14, F.D6, 2]], // G
+  [[0, F.B5, 2], [3, F.G5, 2], [6, F.E5, 2], [8, F.G5, 2], [10, F.B5, 3], [14, F.G5, 2]], // Em
+  [[0, F.A5, 2], [3, F.E5, 2], [6, F.C5, 2], [8, F.E5, 2], [10, F.A5, 3], [14, F.C6, 2]], // Am
+  // Chorus B
+  [[0, F.D5, 2], [3, F.F5, 2], [6, F.A5, 2], [8, F.F5, 2], [10, F.D5, 3], [14, F.A4, 2]], // Dm
+  [[0, F.G5, 2], [3, F.B5, 2], [6, F.D6, 2], [8, F.B5, 2], [10, F.G5, 3], [14, F.D5, 2]], // G
+  [[0, F.E5, 2], [3, F.G5, 2], [6, F.C6, 2], [8, F.G5, 2], [10, F.E5, 3], [14, F.C5, 2]], // C
+  [[0, F.D5, 2], [3, F.G5, 2], [6, F.B5, 2], [8, F.A5, 2], [10, F.G5, 3], [14, F.E5, 2]]  // G (turnaround)
+];
+
+const MELODY: Record<number, { freq: number; len: number }> = {};
+MELODY_BARS.forEach((bar, barIndex) => {
+  for (const [offset, freq, len] of bar) {
+    MELODY[barIndex * 16 + offset] = { freq, len };
+  }
+});
 
 class BgmSequencer {
   private ctx: AudioContext;
   private masterGain: GainNode;
+  private bus: GainNode; // all voices go through here (dry + soft echo)
   private isPlaying: boolean = false;
   private isMuted: boolean = false;
   private isDucked: boolean = false;
@@ -127,7 +78,7 @@ class BgmSequencer {
   private nextNoteTime: number = 0;
   private currentStep: number = 0;
 
-  private secondsPerStep: number = 60 / (128 * 4); // ~0.117s (128 BPM, 16th notes)
+  private secondsPerStep: number = 60 / (BGM_BPM * 4); // 16th notes
   private noiseBuffer: AudioBuffer | null = null;
 
   constructor(ctx: AudioContext, isMuted: boolean = false) {
@@ -135,10 +86,29 @@ class BgmSequencer {
     this.isMuted = isMuted;
 
     this.masterGain = ctx.createGain();
-    const initVol = this.isMuted ? 0 : 0.14;
+    const initVol = this.isMuted ? 0 : BGM_VOLUME;
     this.masterGain.gain.setValueAtTime(initVol, ctx.currentTime);
     this.masterGain.gain.value = initVol;
     this.masterGain.connect(ctx.destination);
+
+    // Soft echo for a spacious, calm feel
+    this.bus = ctx.createGain();
+    this.bus.connect(this.masterGain);
+    const delay = ctx.createDelay(1.0);
+    delay.delayTime.value = this.secondsPerStep * 3; // dotted-eighth echo
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.3;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.28;
+    const damp = ctx.createBiquadFilter();
+    damp.type = 'lowpass';
+    damp.frequency.value = 1800;
+    this.bus.connect(delay);
+    delay.connect(damp);
+    damp.connect(feedback);
+    feedback.connect(delay);
+    damp.connect(wet);
+    wet.connect(this.masterGain);
   }
 
   private getNoiseBuffer(): AudioBuffer {
@@ -181,7 +151,7 @@ class BgmSequencer {
       this.masterGain.gain.setValueAtTime(0, now);
       this.masterGain.gain.value = 0;
     } else {
-      const targetVol = this.isDucked ? 0.025 : 0.14;
+      const targetVol = this.isDucked ? BGM_DUCKED_VOLUME : BGM_VOLUME;
       this.masterGain.gain.setValueAtTime(0, now);
       this.masterGain.gain.linearRampToValueAtTime(targetVol, now + 0.1);
     }
@@ -198,7 +168,7 @@ class BgmSequencer {
       return;
     }
 
-    const targetVol = this.isDucked ? 0.025 : 0.14;
+    const targetVol = this.isDucked ? BGM_DUCKED_VOLUME : BGM_VOLUME;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
     this.masterGain.gain.linearRampToValueAtTime(targetVol, now + 0.25);
@@ -220,43 +190,37 @@ class BgmSequencer {
     const barIndex = Math.floor(step / 16) % CHORDS.length;
     const barStep = step % 16;
     const chord = CHORDS[barIndex];
-
-    // 1. DRUMS
-    // Kick on beats 1 and 3 (and syncopation on beat 4.5 in Chorus)
+    const barSeconds = this.secondsPerStep * 16;
     const isChorus = barIndex >= 8;
-    const isKick = barStep === 0 || barStep === 8 || (isChorus && (barStep === 6 || barStep === 14));
-    if (isKick) {
+
+    // 1. SOFT DRUMS
+    if (barStep === 0 || barStep === 8 || (isChorus && barStep === 10)) {
       this.playKick(time);
     }
-
-    // Snare on beats 2 and 4
     if (barStep === 4 || barStep === 12) {
-      this.playSnare(time);
+      this.playRim(time);
     }
-
-    // Hi-Hat on upbeat 8ths and 16ths
-    if (barStep % 2 === 0 || barStep === 15) {
-      this.playHiHat(time, barStep % 4 === 2 ? 0.05 : 0.025);
-    }
-
-    // 2. BASSLINE (Walking syncopated bass)
-    if ([0, 4, 6, 8, 10, 12, 14].includes(barStep)) {
-      let bassFreq = chord.bass;
-      if (barStep === 4 || barStep === 12) {
-        bassFreq *= 2; // octave bounce
-      } else if (barStep === 6 || barStep === 14) {
-        bassFreq *= 1.5; // fifth bounce
-      }
-      this.playBassNote(bassFreq, time, this.secondsPerStep * 1.6);
-    }
-
-    // 3. BUBBLE ARP (Chiptune bubble chimes)
     if (barStep % 2 === 0) {
-      const arpNote = chord.arp[(barStep / 2) % chord.arp.length];
-      this.playArpNote(arpNote, time, this.secondsPerStep * 1.5);
+      this.playHiHat(time, barStep % 4 === 2 ? 0.018 : 0.009);
     }
 
-    // 4. LEAD MELODY
+    // 2. PAD: one soft sustained chord per bar
+    if (barStep === 0) {
+      for (const freq of chord.pad) this.playPadNote(freq, time, barSeconds);
+    }
+
+    // 3. BASS: bouncy syncopated line
+    const bassPattern: Record<number, number> = { 0: 1, 3: 1, 6: 1.5, 8: 1, 11: 1, 14: 1.5 };
+    if (barStep in bassPattern) {
+      this.playBassNote(chord.bass * bassPattern[barStep], time, this.secondsPerStep * 2.4);
+    }
+
+    // 4. ARP: plucky eighth notes
+    if (barStep % 2 === 0) {
+      this.playArpNote(chord.arp[(barStep / 2) % chord.arp.length], time, this.secondsPerStep * 2.2);
+    }
+
+    // 5. LEAD MELODY
     const melodyEntry = MELODY[step];
     if (melodyEntry) {
       this.playLeadNote(melodyEntry.freq, time, melodyEntry.len * this.secondsPerStep);
@@ -268,55 +232,38 @@ class BgmSequencer {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(125, time);
-    osc.frequency.exponentialRampToValueAtTime(36, time + 0.08);
+    osc.frequency.setValueAtTime(110, time);
+    osc.frequency.exponentialRampToValueAtTime(45, time + 0.09);
 
-    gain.gain.setValueAtTime(0.35, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
+    gain.gain.setValueAtTime(0.09, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.11);
 
     osc.connect(gain);
     gain.connect(this.masterGain);
 
     osc.start(time);
-    osc.stop(time + 0.09);
+    osc.stop(time + 0.11);
   }
 
-  private playSnare(time: number): void {
-    // Noise snap
+  private playRim(time: number): void {
     const noise = this.ctx.createBufferSource();
     noise.buffer = this.getNoiseBuffer();
 
-    const noiseFilter = this.ctx.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.setValueAtTime(2200, time);
-    noiseFilter.Q.setValueAtTime(1.5, time);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2600, time);
+    filter.Q.setValueAtTime(2.0, time);
 
-    const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.2, time);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.03, time);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.06);
 
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(this.masterGain);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
 
     noise.start(time);
-    noise.stop(time + 0.12);
-
-    // Body tone
-    const osc = this.ctx.createOscillator();
-    const oscGain = this.ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(180, time);
-    osc.frequency.exponentialRampToValueAtTime(90, time + 0.06);
-
-    oscGain.gain.setValueAtTime(0.18, time);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.07);
-
-    osc.connect(oscGain);
-    oscGain.connect(this.masterGain);
-
-    osc.start(time);
-    osc.stop(time + 0.07);
+    noise.stop(time + 0.07);
   }
 
   private playHiHat(time: number, vol: number): void {
@@ -325,11 +272,11 @@ class BgmSequencer {
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
-    filter.frequency.setValueAtTime(7500, time);
+    filter.frequency.setValueAtTime(8000, time);
 
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(vol, time);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.035);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
 
     noise.connect(filter);
     filter.connect(gain);
@@ -339,24 +286,43 @@ class BgmSequencer {
     noise.stop(time + 0.035);
   }
 
-  private playBassNote(freq: number, time: number, duration: number): void {
+  private playPadNote(freq: number, time: number, duration: number): void {
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
 
-    osc.type = 'sawtooth';
+    osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, time);
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(360, time);
-    filter.Q.setValueAtTime(2.0, time);
+    filter.frequency.setValueAtTime(900, time);
 
-    gain.gain.setValueAtTime(0.2, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+    // Slow swell in and out
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.055, time + duration * 0.3);
+    gain.gain.linearRampToValueAtTime(0.0001, time + duration + 0.4);
 
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.bus);
+
+    osc.start(time);
+    osc.stop(time + duration + 0.45);
+  }
+
+  private playBassNote(freq: number, time: number, duration: number): void {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, time);
+
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.13, time + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    osc.connect(gain);
+    gain.connect(this.bus);
 
     osc.start(time);
     osc.stop(time + duration);
@@ -369,11 +335,12 @@ class BgmSequencer {
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(freq, time);
 
-    gain.gain.setValueAtTime(0.06, time);
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.065, time + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.bus);
 
     osc.start(time);
     osc.stop(time + duration);
@@ -385,34 +352,35 @@ class BgmSequencer {
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
 
-    // Dual square with subtle chorus
-    osc1.type = 'square';
+    // Soft sine + faint triangle an octave up, slightly detuned
+    osc1.type = 'sine';
     osc1.frequency.setValueAtTime(freq, time);
 
-    osc2.type = 'square';
-    osc2.frequency.setValueAtTime(freq * 1.002, time);
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(freq * 2.003, time);
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(1800, time);
-    filter.Q.setValueAtTime(2.0, time);
+    filter.frequency.setValueAtTime(1400, time);
 
-    gain.gain.setValueAtTime(0.001, time);
-    gain.gain.linearRampToValueAtTime(0.13, time + 0.02);
-    gain.gain.setValueAtTime(0.11, time + duration - 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.12, time + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration + 0.12);
 
     osc1.connect(filter);
     osc2.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.bus);
 
     osc1.start(time);
     osc2.start(time);
 
-    osc1.stop(time + duration);
-    osc2.stop(time + duration);
+    osc1.stop(time + duration + 0.15);
+    osc2.stop(time + duration + 0.15);
   }
 }
+
+// Stage-clear fanfare level relative to its original loudness (kept well below the old, too-loud mix)
+const FANFARE_VOLUME = 0.3;
 
 class SoundManager {
   private ctx: AudioContext | null = null;
@@ -812,9 +780,9 @@ class SoundManager {
 
     // 1. Triple-tongue trumpet pickup
     const G4 = 392.0;
-    this.playBrassVoice(ctx, G4, now + 0.0, 0.07, 0.09, false);
-    this.playBrassVoice(ctx, G4, now + 0.08, 0.07, 0.09, false);
-    this.playBrassVoice(ctx, G4, now + 0.16, 0.07, 0.1, false);
+    this.playBrassVoice(ctx, G4, now + 0.0, 0.07, 0.09 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, G4, now + 0.08, 0.07, 0.09 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, G4, now + 0.16, 0.07, 0.1 * FANFARE_VOLUME, false);
 
     // 2. Ascending heroic brass phrase
     const C5 = 523.25;
@@ -822,20 +790,20 @@ class SoundManager {
     const G5 = 783.99;
     const E4 = 329.63;
 
-    this.playBrassVoice(ctx, C5, now + 0.26, 0.13, 0.1, false);
-    this.playBrassVoice(ctx, E4, now + 0.26, 0.13, 0.06, false);
+    this.playBrassVoice(ctx, C5, now + 0.26, 0.13, 0.1 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, E4, now + 0.26, 0.13, 0.06 * FANFARE_VOLUME, false);
 
-    this.playBrassVoice(ctx, E5, now + 0.4, 0.13, 0.1, false);
-    this.playBrassVoice(ctx, G4, now + 0.4, 0.13, 0.06, false);
+    this.playBrassVoice(ctx, E5, now + 0.4, 0.13, 0.1 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, G4, now + 0.4, 0.13, 0.06 * FANFARE_VOLUME, false);
 
-    this.playBrassVoice(ctx, G5, now + 0.54, 0.15, 0.11, false);
-    this.playBrassVoice(ctx, C5, now + 0.54, 0.15, 0.07, false);
+    this.playBrassVoice(ctx, G5, now + 0.54, 0.15, 0.11 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, C5, now + 0.54, 0.15, 0.07 * FANFARE_VOLUME, false);
 
-    this.playBrassVoice(ctx, E5, now + 0.7, 0.12, 0.09, false);
-    this.playBrassVoice(ctx, C5, now + 0.7, 0.12, 0.06, false);
+    this.playBrassVoice(ctx, E5, now + 0.7, 0.12, 0.09 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, C5, now + 0.7, 0.12, 0.06 * FANFARE_VOLUME, false);
 
-    this.playBrassVoice(ctx, G5, now + 0.83, 0.25, 0.12, false);
-    this.playBrassVoice(ctx, E5, now + 0.83, 0.25, 0.07, false);
+    this.playBrassVoice(ctx, G5, now + 0.83, 0.25, 0.12 * FANFARE_VOLUME, false);
+    this.playBrassVoice(ctx, E5, now + 0.83, 0.25, 0.07 * FANFARE_VOLUME, false);
 
     // 3. Grand Triumphant Full Brass Chord Hold
     const chordTime = now + 1.12;
@@ -846,7 +814,7 @@ class SoundManager {
     kickOsc.type = 'sine';
     kickOsc.frequency.setValueAtTime(120, chordTime);
     kickOsc.frequency.exponentialRampToValueAtTime(40, chordTime + 0.25);
-    kickGain.gain.setValueAtTime(0.12, chordTime);
+    kickGain.gain.setValueAtTime(0.12 * FANFARE_VOLUME, chordTime);
     kickGain.gain.exponentialRampToValueAtTime(0.001, chordTime + 0.28);
     kickOsc.connect(kickGain);
     kickGain.connect(ctx.destination);
@@ -857,13 +825,13 @@ class SoundManager {
     const C4 = 261.63;
     const C6 = 1046.5;
 
-    this.playBrassVoice(ctx, C3, chordTime, chordDuration, 0.07, true);
-    this.playBrassVoice(ctx, C4, chordTime, chordDuration, 0.06, true);
-    this.playBrassVoice(ctx, E4, chordTime, chordDuration, 0.05, true);
-    this.playBrassVoice(ctx, G4, chordTime, chordDuration, 0.05, true);
-    this.playBrassVoice(ctx, C5, chordTime, chordDuration, 0.08, true);
-    this.playBrassVoice(ctx, E5, chordTime, chordDuration, 0.06, true);
-    this.playBrassVoice(ctx, C6, chordTime, chordDuration, 0.045, true);
+    this.playBrassVoice(ctx, C3, chordTime, chordDuration, 0.07 * FANFARE_VOLUME, true);
+    this.playBrassVoice(ctx, C4, chordTime, chordDuration, 0.06 * FANFARE_VOLUME, true);
+    this.playBrassVoice(ctx, E4, chordTime, chordDuration, 0.05 * FANFARE_VOLUME, true);
+    this.playBrassVoice(ctx, G4, chordTime, chordDuration, 0.05 * FANFARE_VOLUME, true);
+    this.playBrassVoice(ctx, C5, chordTime, chordDuration, 0.08 * FANFARE_VOLUME, true);
+    this.playBrassVoice(ctx, E5, chordTime, chordDuration, 0.06 * FANFARE_VOLUME, true);
+    this.playBrassVoice(ctx, C6, chordTime, chordDuration, 0.045 * FANFARE_VOLUME, true);
   }
 
   public playGameOver(): void {
