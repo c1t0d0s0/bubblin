@@ -1,3 +1,4 @@
+import { getColsInRow, getNeighbors } from './grid';
 import { BubbleColor, StageData } from './types';
 
 // Helper to define layouts using color letters:
@@ -508,14 +509,152 @@ export const STAGES: StageData[] = [
   }
 ];
 
+// ==========================================
+// Difficulty curve
+// The hand-made shapes above are the top of every stage. On top of them, difficulty rises steadily with the
+// stage number through: fewer shots before the ceiling drops, more colors, and extra rows of bubbles
+// under the shape (generated deterministically, so every client / player gets the same board).
+// ==========================================
+const EXTRA_COLOR_ORDER: BubbleColor[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Number of colors in play for a (base) stage number: 3 -> 4 -> 5 -> 6 */
+function targetColorCount(baseId: number): number {
+  if (baseId <= 5) return 3;
+  if (baseId <= 11) return 4;
+  if (baseId <= 20) return 5;
+  return 6;
+}
+
+/** Fills the rows below the hand-made shape until the layout has `targetRows` rows. */
+function addFillerRows(
+  layout: (BubbleColor | null)[][],
+  artRows: number,
+  targetRows: number,
+  colors: BubbleColor[],
+  density: number,
+  rand: () => number
+): void {
+  for (let r = artRows; r < targetRows; r++) {
+    const row: (BubbleColor | null)[] = [];
+    for (let c = 0; c < getColsInRow(r); c++) {
+      // Only attach to bubbles above, otherwise the cell would float and drop by itself
+      const upper = getNeighbors(r, c).filter((n) => n.row < r && layout[n.row]?.[n.col]);
+      if (r > 0 && upper.length === 0) {
+        row.push(null);
+        continue;
+      }
+      if (rand() > density) {
+        row.push(null);
+        continue;
+      }
+      // Mostly small clumps of the same color (matchable), sometimes a random color
+      const left = c > 0 ? row[c - 1] : null;
+      const roll = rand();
+      let color: BubbleColor;
+      if (left && roll < 0.45) {
+        color = left;
+      } else if (upper.length > 0 && roll < 0.65) {
+        color = layout[upper[0].row][upper[0].col] as BubbleColor;
+      } else {
+        color = colors[Math.floor(rand() * colors.length)];
+      }
+      row.push(color);
+    }
+    layout.push(row);
+  }
+}
+
 export function getStage(id: number): StageData {
   const index = (id - 1) % STAGES.length;
   const base = STAGES[index];
-  // If looping after beating all 30 stages, slightly increase difficulty
+  // After beating all 30 stages (LOOP MODE) every lap gets harder still
   const loopCount = Math.floor((id - 1) / STAGES.length);
+
+  // 0 at stage 1 -> 1 at stage 30
+  const t = (base.id - 1) / (STAGES.length - 1);
+
+  // Hand-made shape (copied, never mutated)
+  const layout = base.layout.map((row) => row.slice());
+  let artRows = 0;
+  const present = new Set<BubbleColor>();
+  layout.forEach((row, r) =>
+    row.forEach((cell) => {
+      if (cell) {
+        present.add(cell);
+        artRows = Math.max(artRows, r + 1);
+      }
+    })
+  );
+  // (rows of the shape that are entirely empty at the bottom are not counted)
+  layout.length = artRows;
+
+  // Colors: the shape's own plus new ones as the stages advance
+  const colors: BubbleColor[] = [...present];
+  const wanted = Math.min(6, targetColorCount(base.id) + Math.min(loopCount, 1));
+  for (const c of EXTRA_COLOR_ORDER) {
+    if (colors.length >= wanted) break;
+    if (!colors.includes(c)) colors.push(c);
+  }
+  const hasNewColors = colors.length > present.size;
+
+  // Rows: 4 at stage 1 -> 9 at stage 30 (+1 per LOOP lap, at most 2)
+  let targetRows = Math.round(4 + 5 * t) + Math.min(loopCount, 2);
+  if (hasNewColors) targetRows = Math.max(targetRows, artRows + 1); // room for the new colors to appear
+  addFillerRows(
+    layout,
+    artRows,
+    targetRows,
+    colors,
+    0.8 + 0.2 * t,
+    mulberry32(base.id * 7919 + loopCount * 104729)
+  );
+
+  // Ceiling anchor: a top row made of one big same-color cluster can be popped in a single shot, dropping the
+  // whole picture. As the stages advance, scramble the top rows more and more so several separate shots are
+  // needed to cut the shape loose.
+  if (base.id >= 6) {
+    const scramble = mulberry32(base.id * 15013 + loopCount * 92821 + 1);
+    const anchorRows: Array<[number, number]> = [
+      [0, 0.05 + 0.35 * t],
+      [1, 0.03 + 0.17 * t]
+    ];
+    // Runs of 3+ same-color bubbles in the top row are only broken up in the later stages
+    const breakRuns = base.id >= 10;
+    for (const [r, chance] of anchorRows) {
+      const row = layout[r];
+      if (!row) continue;
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        if (!cell) continue;
+        const clash = (color: BubbleColor | null) => color === row[c - 1] || color === row[c + 1];
+        const inRun = breakRuns && r === 0 && c >= 2 && cell === row[c - 1] && cell === row[c - 2];
+        if (scramble() < chance || inRun) {
+          const options = colors.filter((col) => col !== cell && !clash(col));
+          if (options.length > 0) row[c] = options[Math.floor(scramble() * options.length)];
+        }
+      }
+    }
+  }
+
+  // Shots before the ceiling drops: 9 at stage 1 -> 5 at stage 30, then -1 per LOOP lap (min 3)
+  const shots = Math.max(3, Math.round(9 - 4 * t) - loopCount);
+
   return {
     ...base,
     id,
-    shotsBeforeDrop: Math.max(3, base.shotsBeforeDrop - loopCount)
+    colors,
+    layout,
+    shotsBeforeDrop: shots
   };
 }
