@@ -1137,6 +1137,11 @@ body {
 }
 
 @media (max-width: 520px) {
+  /* Phones: game only, no text chat */
+  .chat-panel {
+    display: none !important;
+  }
+
   #app {
     padding: 0;
   }

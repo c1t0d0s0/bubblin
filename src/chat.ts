@@ -135,11 +135,21 @@ export class ChatManager {
   }
 
   /**
+   * Phones (touch device whose short side is phone-sized) skip the text chat and show only the game.
+   */
+  private isPhone(): boolean {
+    return (
+      window.matchMedia('(pointer: coarse)').matches &&
+      Math.min(window.innerWidth, window.innerHeight) <= 520
+    );
+  }
+
+  /**
    * Shows or hides the chat panel.
    */
   public setVisible(visible: boolean): void {
     if (this.panelElem) {
-      if (visible) {
+      if (visible && !this.isPhone()) {
         this.panelElem.classList.remove('hidden');
         document.getElementById('app')?.classList.add('multiplayer-active');
       } else {
