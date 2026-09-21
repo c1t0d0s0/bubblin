@@ -22,8 +22,11 @@
         <header id="game-header">
           <div class="header-left">
             <h1 class="logo">BUBBLIN'</h1>
-            <div class="stage-badge">
-              STAGE <span id="stage-value">1</span>
+            <div class="stage-row">
+              <div class="stage-badge">
+                STAGE <span id="stage-value">1</span>
+              </div>
+              <div class="stage-badge spectator-tag spectator-only">👀 観戦中</div>
             </div>
           </div>
 
@@ -46,6 +49,7 @@
             <div class="audio-controls">
               <button id="bgm-btn" class="icon-btn" aria-label="Toggle BGM" title="BGM 切替">🎵</button>
               <button id="se-btn" class="icon-btn" aria-label="Toggle Sound Effects" title="SE 切替">🔊</button>
+              <button id="spectator-leave-btn" class="icon-btn spectator-only" aria-label="Leave" title="観戦を終了">🚪</button>
             </div>
           </div>
         </header>

@@ -183,6 +183,11 @@ export class UIManager {
       this.callbacks.onLeaveMultiplayer?.();
     });
 
+    // Leave (spectator mode)
+    document.getElementById('spectator-leave-btn')?.addEventListener('click', () => {
+      this.callbacks.onLeaveMultiplayer?.();
+    });
+
     // Audio buttons
     this.bgmBtn?.addEventListener('click', () => {
       soundManager.toggleBgm();
@@ -291,6 +296,54 @@ export class UIManager {
       opponentScreen?.classList.add('hidden');
       localBadge?.classList.add('hidden');
     }
+  }
+
+  /** Spectator mode UI: hides player-only controls, labels the screens and shows the leave button. */
+  public setSpectatorMode(active: boolean, mode: PlayMode = 'VERSUS'): void {
+    document.documentElement.classList.toggle('spectating', active);
+
+    const localBadge = document.getElementById('local-player-badge');
+    const rivalBadge = document.getElementById('opponent-player-badge');
+    if (active) {
+      if (mode === 'VERSUS') {
+        if (localBadge) localBadge.textContent = 'P1';
+        if (rivalBadge) rivalBadge.textContent = 'P2';
+      }
+    } else {
+      if (localBadge) localBadge.textContent = 'YOU (P1)';
+      if (rivalBadge) rivalBadge.textContent = 'RIVAL (P2)';
+    }
+  }
+
+  public setSpectatorBadges(left: string, right: string): void {
+    const localBadge = document.getElementById('local-player-badge');
+    const rivalBadge = document.getElementById('opponent-player-badge');
+    if (localBadge && localBadge.textContent !== left) localBadge.textContent = left;
+    if (rivalBadge && rivalBadge.textContent !== right) rivalBadge.textContent = right;
+  }
+
+  public showSpectatorResult(title: string, sub: string): void {
+    this.isVersusResult = false;
+    const titleEl = document.getElementById('game-over-title');
+    const scoreEl = document.getElementById('game-over-score-val');
+    const subEl = document.getElementById('game-over-sub-text');
+    const iconEl = document.querySelector('#game-over-modal .modal-icon');
+    const restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
+    const leaveBtn = document.getElementById('leave-game-btn');
+
+    if (titleEl) {
+      titleEl.textContent = title;
+      titleEl.style.color = '#ffd000';
+    }
+    if (iconEl) iconEl.textContent = '👀';
+    if (subEl) subEl.textContent = '対戦が終了しました。再戦が始まると自動で観戦を続けます。';
+    if (scoreEl) scoreEl.textContent = sub;
+    if (restartBtn) {
+      restartBtn.textContent = '⏳ 再戦を待っています...';
+      restartBtn.disabled = true;
+    }
+    if (leaveBtn) leaveBtn.classList.remove('hidden');
+    this.gameOverModal.classList.remove('hidden');
   }
 
   public showVersusResult(isWinner: boolean, myScore: number, rivalScore: number): void {

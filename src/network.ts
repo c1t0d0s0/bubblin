@@ -39,6 +39,7 @@ export class NetworkManager {
   private myPlayerName: string = 'Player 1';
   private playMode: PlayMode = 'SOLO';
   private isLocalMode: boolean = false;
+  private isSpectatorMode: boolean = false;
 
   private opponentCallback?: (state: PlayerNetworkState) => void;
   private roomStatusCallback?: (status: RoomStatus, mode: PlayMode, stageId: number) => void;
@@ -46,6 +47,8 @@ export class NetworkManager {
   private attackCallback?: (count: number) => void;
   private rematchCallback?: () => void;
   private opponentLeftCallback?: (name: string) => void;
+  private spectateCallback?: (room: RoomData) => void;
+  private spectateEndCallback?: () => void;
 
   private currentRound: number = 1;
 
@@ -76,6 +79,10 @@ export class NetworkManager {
     return this.isLocalMode;
   }
 
+  public isSpectator(): boolean {
+    return this.isSpectatorMode;
+  }
+
   /**
    * Generates a short, human-friendly 5-character Room ID (e.g. BUB77).
    */
@@ -91,7 +98,9 @@ export class NetworkManager {
   /**
    * Checks if a room exists in Firebase and returns its status/mode.
    */
-  public async checkRoom(roomId: string): Promise<{ exists: boolean; status?: RoomStatus; mode?: PlayMode }> {
+  public async checkRoom(
+    roomId: string
+  ): Promise<{ exists: boolean; status?: RoomStatus; mode?: PlayMode; full?: boolean }> {
     roomId = roomId.trim().toUpperCase();
     if (!roomId) return { exists: false };
     try {
@@ -100,7 +109,9 @@ export class NetworkManager {
       const snapshot = await get(ref(this.db, `rooms/${roomId}`));
       if (!snapshot.exists()) return { exists: false };
       const val = snapshot.val() as RoomData;
-      return { exists: true, status: val.status, mode: val.mode };
+      // A room is full once P2 has taken the second seat
+      const full = !!(val.p2 && val.p2.id);
+      return { exists: true, status: val.status, mode: val.mode, full };
     } catch {
       return { exists: false };
     }
@@ -117,6 +128,7 @@ export class NetworkManager {
   ): Promise<string> {
     this.playMode = mode;
     this.mySlot = 'p1';
+    this.isSpectatorMode = false;
     this.myPlayerName = playerName || 'Player 1';
 
     this.db = await initFirebase();
@@ -186,6 +198,7 @@ export class NetworkManager {
     playerName: string = 'Player 2'
   ): Promise<{ success: boolean; mode: PlayMode; error?: string }> {
     this.mySlot = 'p2';
+    this.isSpectatorMode = false;
     this.myPlayerName = playerName || 'Player 2';
     roomId = roomId.trim().toUpperCase();
 
@@ -256,6 +269,50 @@ export class NetworkManager {
   }
 
   /**
+   * Joins a room as a spectator (3rd player onwards, or when the game is already running).
+   * Spectators only read the room state and can chat.
+   */
+  public async joinAsSpectator(
+    roomId: string,
+    playerName: string = 'Spectator'
+  ): Promise<{ success: boolean; mode: PlayMode; error?: string }> {
+    roomId = roomId.trim().toUpperCase();
+    try {
+      this.db = await initFirebase();
+      if (!this.db) {
+        return { success: false, mode: 'VERSUS', error: 'Firebase is not configured.' };
+      }
+
+      const snapshot = await get(ref(this.db, `rooms/${roomId}`));
+      if (!snapshot.exists()) {
+        return { success: false, mode: 'VERSUS', error: 'ルームが見つかりません。コードを確認してください。' };
+      }
+      const data = snapshot.val() as RoomData;
+
+      this.isLocalMode = false;
+      this.isSpectatorMode = true;
+      this.currentRoomId = roomId;
+      this.playMode = data.mode;
+      this.currentRound = data.round || 1;
+      this.myPlayerName = playerName || 'Spectator';
+
+      const spectatorRef = ref(this.db, `rooms/${roomId}/spectators/${this.myPlayerId}`);
+      await set(spectatorRef, { id: this.myPlayerId, name: this.myPlayerName, joinedAt: Date.now() });
+      onDisconnect(spectatorRef).remove().catch(() => {});
+
+      this.subscribeToRoom(roomId);
+      this.sendSystemChatMessage(`👀 ${this.myPlayerName} が観戦に参加しました。`);
+
+      return { success: true, mode: data.mode };
+    } catch (err: any) {
+      this.isSpectatorMode = false;
+      this.currentRoomId = null;
+      console.error('[Network] Failed to join as spectator:', err);
+      return { success: false, mode: 'VERSUS', error: err?.message || '観戦の開始に失敗しました。' };
+    }
+  }
+
+  /**
    * Sets up real-time listeners for room state, opponent updates, and chat.
    */
   private subscribeToRoom(roomId: string): void {
@@ -264,10 +321,25 @@ export class NetworkManager {
     // Listen to room status and mode changes
     const statusRef = ref(this.db, `rooms/${roomId}`);
     onValue(statusRef, (snapshot) => {
-      if (!snapshot.exists()) return;
+      if (!snapshot.exists()) {
+        // The host closed the room while we were watching
+        if (this.isSpectatorMode && this.currentRoomId === roomId) this.spectateEndCallback?.();
+        return;
+      }
       const room = snapshot.val() as RoomData;
       if (this.roomStatusCallback) {
         this.roomStatusCallback(room.status, room.mode, room.stageId);
+      }
+
+      // Spectators only watch: hand the whole room to the game and skip the player-only logic below
+      if (this.isSpectatorMode) {
+        const roomRound = room.round || 1;
+        if (roomRound > this.currentRound) {
+          this.currentRound = roomRound;
+          this.rematchCallback?.();
+        }
+        this.spectateCallback?.(room);
+        return;
       }
 
       // Check rematch state
@@ -350,7 +422,7 @@ export class NetworkManager {
     partial: Partial<PlayerNetworkState>,
     forceImmediate: boolean = false
   ): void {
-    if (this.isLocalMode || !this.db || !this.currentRoomId) return;
+    if (this.isLocalMode || this.isSpectatorMode || !this.db || !this.currentRoomId) return;
 
     const now = performance.now();
     if (!forceImmediate && now - this.lastSyncTime < this.syncThrottleMs) {
@@ -369,7 +441,7 @@ export class NetworkManager {
    * Sends attack/penalty bubbles to the opponent in Versus mode.
    */
   public async sendAttack(count: number): Promise<void> {
-    if (count <= 0 || !this.currentRoomId) return;
+    if (count <= 0 || !this.currentRoomId || this.isSpectatorMode) return;
 
     if (this.isLocalMode) {
       if (this.attackCallback) this.attackCallback(count);
@@ -398,7 +470,7 @@ export class NetworkManager {
 
     const msg: ChatMessage = {
       id: 'msg_' + Math.random().toString(36).substring(2, 9),
-      sender: this.mySlot,
+      sender: this.isSpectatorMode ? 'spectator' : this.mySlot,
       senderName: this.myPlayerName,
       text: trimmed,
       timestamp: Date.now()
@@ -463,10 +535,19 @@ export class NetworkManager {
     this.opponentLeftCallback = callback;
   }
 
+  public onSpectate(callback: (room: RoomData) => void): void {
+    this.spectateCallback = callback;
+  }
+
+  public onSpectateEnd(callback: () => void): void {
+    this.spectateEndCallback = callback;
+  }
+
   /**
    * Requests a rematch. When both players request rematch, the game restarts simultaneously.
    */
   public async requestRematch(): Promise<void> {
+    if (this.isSpectatorMode) return;
     if (this.isLocalMode || !this.db || !this.currentRoomId) {
       if (this.rematchCallback) {
         setTimeout(() => this.rematchCallback?.(), 200);
@@ -485,7 +566,9 @@ export class NetworkManager {
   public async leaveRoom(): Promise<void> {
     if (this.db && this.currentRoomId) {
       try {
-        if (this.mySlot === 'p1') {
+        if (this.isSpectatorMode) {
+          await remove(ref(this.db, `rooms/${this.currentRoomId}/spectators/${this.myPlayerId}`));
+        } else if (this.mySlot === 'p1') {
           await remove(ref(this.db, `rooms/${this.currentRoomId}`));
         } else {
           await remove(ref(this.db, `rooms/${this.currentRoomId}/${this.mySlot}`));
@@ -495,6 +578,7 @@ export class NetworkManager {
     this.currentRoomId = null;
     this.playMode = 'SOLO';
     this.isLocalMode = false;
+    this.isSpectatorMode = false;
   }
 }
 

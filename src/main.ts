@@ -40,6 +40,7 @@ import {
   PlayerNetworkState,
   PlayMode,
   Projectile,
+  RoomData,
   ScorePopup,
   StageData
 } from './types';
@@ -47,6 +48,19 @@ import { UIManager } from './ui';
 import { initAnalytics } from './analytics';
 import { ChatManager } from './chat';
 import { networkManager } from './network';
+
+/** A board rendered from another player's network state (opponent view / spectator view). */
+interface RemoteBoard {
+  state: PlayerNetworkState | null;
+  grid: GridCell[][];
+  projectile: Projectile | null;
+  lastShotId: number;
+  particles: Particle[];
+}
+
+function createRemoteBoard(): RemoteBoard {
+  return { state: null, grid: createEmptyGrid(), projectile: null, lastShotId: 0, particles: [] };
+}
 
 class BubblinGame {
   private canvas: HTMLCanvasElement;
@@ -110,6 +124,10 @@ class BubblinGame {
   private guestInputSeen: boolean = false; // host: first guest state received after (re)start
   private lastGuestShootSeq: number = 0;
   private lastGuestSwapSeq: number = 0;
+  // Spectator mode (3rd player onwards)
+  private specLeft: RemoteBoard = createRemoteBoard(); // VERSUS: P1 (drawn on the main canvas)
+  private specRight: RemoteBoard = createRemoteBoard(); // VERSUS: P2 (drawn on the opponent canvas)
+
   private aimFlushTimer: number | null = null;
   private p2AimTarget: number = 0; // host: guest's aim (eased into p2AimAngle)
   private remoteAimTarget: number = 0; // guest: host's aim (eased into aimAngle)
@@ -193,6 +211,7 @@ class BubblinGame {
     this.state = 'TITLE';
     this.chatManager.setVisible(false);
     this.ui.setVersusLayout(false);
+    this.ui.setSpectatorMode(false);
     this.ui.hideGameOverModal();
     this.ui.showTitleModal();
   }
@@ -255,12 +274,20 @@ class BubblinGame {
 
   // ===== Online CO-OP (host-authoritative shared board) =====
 
+  private isSpectating(): boolean {
+    return networkManager.isSpectator() && !!networkManager.getRoomId();
+  }
+
   private isCoopHost(): boolean {
-    return this.playMode === 'COOP' && !this.isLocal2P && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p1';
+    return this.playMode === 'COOP' && !this.isLocal2P && !this.isSpectating() && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p1';
   }
 
   private isCoopGuest(): boolean {
-    return this.playMode === 'COOP' && !this.isLocal2P && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p2';
+    return this.playMode === 'COOP' && !this.isLocal2P && !this.isSpectating() && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p2';
+  }
+
+  private isCoopSpectator(): boolean {
+    return this.playMode === 'COOP' && this.isSpectating();
   }
 
   private toNetProjectile(p: Projectile | null) {
@@ -450,6 +477,10 @@ class BubblinGame {
       if (this.keyRight) this.adjustAim(0.035);
     }
     this.aimAngle += (this.remoteAimTarget - this.aimAngle) * 0.45;
+    if (this.isSpectating()) {
+      // Spectator sees both launchers move remotely
+      this.p2AimAngle += (this.p2AimTarget - this.p2AimAngle) * 0.45;
+    }
 
     if (this.ceilingY < this.targetCeilingY) {
       this.ceilingY = Math.min(this.targetCeilingY, this.ceilingY + 2);
@@ -466,6 +497,139 @@ class BubblinGame {
       if (res.bounced) soundManager.playBounce();
       if (res.hit) this.p2Projectile = null;
     }
+  }
+
+
+  // ===== Spectator mode =====
+
+  private startSpectating(mode: PlayMode, roomId: string): void {
+    this.playMode = mode;
+    this.isLocal2P = false;
+    this.state = 'PLAYING';
+    this.score = 0;
+    this.combo = 0;
+    this.projectile = null;
+    this.p2Projectile = null;
+    this.particles = [];
+    this.droppingBubbles = [];
+    this.scorePopups = [];
+    this.confettiList = [];
+    this.specLeft = createRemoteBoard();
+    this.specRight = createRemoteBoard();
+    this.coopAppliedEpoch = -1;
+    this.lastCoopApplied = 0;
+    this.remoteAimTarget = 0;
+    this.p2AimTarget = 0;
+    this.loadStage(1);
+
+    this.ui.setVersusLayout(mode === 'VERSUS');
+    this.ui.setSpectatorMode(true, mode);
+    this.chatManager.clearMessages();
+    this.chatManager.setVisible(true);
+    this.chatManager.updateRoomInfo(roomId, mode);
+
+    this.resizeCanvas();
+    soundManager.startBgm();
+    soundManager.setBgmDucking(false);
+  }
+
+  private applySpectatorRoom(room: RoomData): void {
+    if (room.mode === 'COOP') {
+      this.p2AimTarget = room.p2?.aimAngle ?? 0;
+      if (room.p1) this.applyCoopSnapshot(room.p1);
+      return;
+    }
+
+    // VERSUS: both players' boards
+    if (room.p1) this.applyRemoteState(this.specLeft, room.p1);
+    if (room.p2) this.applyRemoteState(this.specRight, room.p2);
+
+    const p1 = room.p1;
+    const p2 = room.p2;
+    this.ui.setSpectatorBadges(
+      `P1 ${p1?.name || ''}  ${(p1?.score || 0).toLocaleString()}`,
+      `P2 ${p2?.name || ''}  ${(p2?.score || 0).toLocaleString()}`
+    );
+    this.ui.updateHUD(p1?.score || 0, this.highScore, 1, p1?.shotsBeforeDrop || 6, 6);
+
+    if (this.state === 'PLAYING' && p1 && p2) {
+      let winner: PlayerNetworkState | null = null;
+      if (p1.isCleared || p2.isDead) winner = p1;
+      else if (p2.isCleared || p1.isDead) winner = p2;
+      if (winner) {
+        this.state = 'GAME_OVER';
+        soundManager.playStageClear();
+        this.ui.showSpectatorResult(
+          `${winner === p1 ? 'P1' : 'P2'} ${winner.name || ''} の勝利！ 🏆`,
+          `P1 ${p1.name || ''}: ${(p1.score || 0).toLocaleString()} / P2 ${p2.name || ''}: ${(p2.score || 0).toLocaleString()}`
+        );
+      }
+    }
+  }
+
+  /** Copy a player's network state into a board (grid with pop effects, newly fired bubble). */
+  private applyRemoteState(board: RemoteBoard, state: PlayerNetworkState): void {
+    board.state = state;
+    if (state.grid && state.grid.length > 0) {
+      deserializeGrid(state.grid, board.grid, (row, col, oldColor) => {
+        const pos = getHexPosition(row, col, state.ceilingY || 0);
+        this.triggerOpponentPopParticles(pos.x, pos.y, oldColor, board.particles);
+      });
+    }
+    if (state.projectile && state.projectile.id && state.projectile.id !== board.lastShotId) {
+      board.lastShotId = state.projectile.id;
+      board.projectile = {
+        x: state.projectile.x,
+        y: state.projectile.y,
+        vx: state.projectile.vx,
+        vy: state.projectile.vy,
+        color: state.projectile.color,
+        radius: BUBBLE_RADIUS
+      };
+    }
+  }
+
+  /** Advance a remote board's flying bubble (visual only). */
+  private stepRemoteBoard(board: RemoteBoard): void {
+    if (!board.projectile) return;
+    const res = updateProjectile(board.projectile, board.grid, board.state?.ceilingY || 0);
+    if (res.hit) {
+      if (res.snapCell && board.grid[res.snapCell.row]?.[res.snapCell.col]) {
+        board.grid[res.snapCell.row][res.snapCell.col].color = board.projectile.color;
+      }
+      board.projectile = null;
+    }
+  }
+
+  private renderRemoteBoard(renderer: GameRenderer, board: RemoteBoard): void {
+    const st = board.state;
+    let trajectory = null;
+    if (st && !board.projectile) {
+      trajectory = calculateTrajectory(
+        LAUNCHER_X + Math.sin(st.aimAngle) * BARREL_LENGTH,
+        LAUNCHER_Y - Math.cos(st.aimAngle) * BARREL_LENGTH,
+        st.aimAngle,
+        board.grid,
+        st.ceilingY || 0
+      );
+    }
+
+    renderer.render({
+      grid: board.grid,
+      ceilingY: st?.ceilingY || 0,
+      currentBubble: (st?.currentBubble && st.currentBubble in COLOR_DEFS) ? st.currentBubble : 'blue',
+      nextBubble: (st?.nextBubble && st.nextBubble in COLOR_DEFS) ? st.nextBubble : 'green',
+      aimAngle: st?.aimAngle || 0,
+      projectile: board.projectile,
+      droppingBubbles: [],
+      particles: board.particles,
+      scorePopups: [],
+      confettiList: [],
+      trajectory,
+      shotsBeforeDrop: st?.shotsBeforeDrop || 6,
+      maxShotsBeforeDrop: 6,
+      warningTime: 0
+    });
   }
 
   private setupNetworkListeners(): void {
@@ -512,6 +676,13 @@ class BubblinGame {
       }
     });
 
+    networkManager.onSpectate((room) => this.applySpectatorRoom(room));
+
+    networkManager.onSpectateEnd(() => {
+      alert('ルームが終了しました。');
+      this.leaveMultiplayer();
+    });
+
     networkManager.onAttack((count) => {
       this.handleIncomingAttack(count);
     });
@@ -524,6 +695,14 @@ class BubblinGame {
     });
 
     networkManager.onRematch(() => {
+      if (networkManager.isSpectator()) {
+        // Spectator: a new round started, just clear the result screen and keep watching
+        this.ui.hideGameOverModal();
+        this.specLeft = createRemoteBoard();
+        this.specRight = createRemoteBoard();
+        this.state = 'PLAYING';
+        return;
+      }
       this.ui.updateRematchStatus('✨ 再戦を開始します！', true);
       setTimeout(() => {
         this.ui.hideGameOverModal();
@@ -564,8 +743,16 @@ class BubblinGame {
     const check = await networkManager.checkRoom(targetRoomId);
 
     if (check.exists) {
-      if (check.status === 'PLAYING') {
-        alert('このルームはすでにゲーム中、または満員です。別のルームコードを指定してください。');
+      if (check.status === 'PLAYING' || check.full) {
+        // Game already running or both seats taken -> watch as a spectator
+        const specName = playerName && !/^Player \d$/.test(playerName) ? playerName : '観戦者';
+        const res = await networkManager.joinAsSpectator(targetRoomId, specName);
+        if (res.success) {
+          this.ui.hideMultiplayerModal();
+          this.startSpectating(res.mode, targetRoomId);
+        } else {
+          alert(res.error || '観戦の開始に失敗しました。');
+        }
         return;
       }
 
@@ -625,6 +812,7 @@ class BubblinGame {
     this.coopAppliedEpoch = -1;
     this.lastCoopApplied = 0;
     this.loadStage(1);
+    this.ui.setSpectatorMode(false);
 
     if (this.playMode === 'VERSUS') {
       this.ui.setVersusLayout(true);
@@ -814,6 +1002,7 @@ class BubblinGame {
   }
 
   public setAim(angle: number): void {
+    if (this.isSpectating()) return;
     const clamped = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, angle));
     if (this.isCoopGuest()) {
       // Online CO-OP guest steers the P2 launcher (aimAngle mirrors the host's P1 launcher)
@@ -838,7 +1027,7 @@ class BubblinGame {
   }
 
   public swapBubbles(isP2: boolean = false): void {
-    if (this.state !== 'PLAYING') return;
+    if (this.state !== 'PLAYING' || this.isSpectating()) return;
 
     if (!isP2 && this.isCoopGuest()) {
       // Online CO-OP guest: ask the host, and swap locally right away for responsiveness
@@ -927,6 +1116,7 @@ class BubblinGame {
     this.isLocal2P = false;
     this.chatManager.setVisible(false);
     this.ui.setVersusLayout(false);
+    this.ui.setSpectatorMode(false);
     this.score = 0;
     this.combo = 0;
     this.loadStage(1);
@@ -952,7 +1142,7 @@ class BubblinGame {
   }
 
   public shoot(isP2: boolean = false): void {
-    if (this.state !== 'PLAYING') return;
+    if (this.state !== 'PLAYING' || this.isSpectating()) return;
 
     if (!isP2 && this.isCoopGuest()) {
       // Online CO-OP guest: the host fires the bubble
@@ -1079,9 +1269,14 @@ class BubblinGame {
     }
   }
 
-  private triggerOpponentPopParticles(x: number, y: number, color: BubbleColor): void {
+  private triggerOpponentPopParticles(
+    x: number,
+    y: number,
+    color: BubbleColor,
+    list: Particle[] = this.opponentParticles
+  ): void {
     const def = (color && color in COLOR_DEFS) ? COLOR_DEFS[color] : COLOR_DEFS.red;
-    this.opponentParticles.push({
+    list.push({
       x,
       y,
       vx: 0,
@@ -1097,7 +1292,7 @@ class BubblinGame {
     for (let i = 0; i < count; i++) {
       const angle = (i * Math.PI * 2) / count + (Math.random() - 0.5) * 0.5;
       const speed = 2.5 + Math.random() * 5;
-      this.opponentParticles.push({
+      list.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
@@ -1389,7 +1584,13 @@ class BubblinGame {
   }
 
   private update(): void {
-    if (this.isCoopGuest()) {
+    if (this.isSpectating() && this.playMode === 'VERSUS') {
+      this.stepRemoteBoard(this.specLeft);
+      this.stepRemoteBoard(this.specRight);
+      return;
+    }
+
+    if (this.isCoopGuest() || this.isCoopSpectator()) {
       this.updateCoopGuest();
       return;
     }
@@ -1490,6 +1691,12 @@ class BubblinGame {
   }
 
   private render(): void {
+    if (this.isSpectating() && this.playMode === 'VERSUS') {
+      this.renderRemoteBoard(this.renderer, this.specLeft);
+      if (this.opponentRenderer) this.renderRemoteBoard(this.opponentRenderer, this.specRight);
+      return;
+    }
+
     let trajectory = null;
     const isCoop = this.playMode === 'COOP';
 
@@ -1547,36 +1754,12 @@ class BubblinGame {
 
     // If Versus mode, render opponent's canvas
     if (this.playMode === 'VERSUS' && this.opponentRenderer) {
-      let oppTrajectory = null;
-      if (this.opponentState && !this.opponentProjectile) {
-        oppTrajectory = calculateTrajectory(
-          LAUNCHER_X + Math.sin(this.opponentState.aimAngle) * BARREL_LENGTH,
-          LAUNCHER_Y - Math.cos(this.opponentState.aimAngle) * BARREL_LENGTH,
-          this.opponentState.aimAngle,
-          this.opponentGrid,
-          this.opponentState.ceilingY || 0
-        );
-      }
-
-      this.opponentRenderer.render({
+      this.renderRemoteBoard(this.opponentRenderer, {
+        state: this.opponentState,
         grid: this.opponentGrid,
-        ceilingY: this.opponentState?.ceilingY || 0,
-        currentBubble: (this.opponentState?.currentBubble && this.opponentState.currentBubble in COLOR_DEFS)
-          ? this.opponentState.currentBubble
-          : 'blue',
-        nextBubble: (this.opponentState?.nextBubble && this.opponentState.nextBubble in COLOR_DEFS)
-          ? this.opponentState.nextBubble
-          : 'green',
-        aimAngle: this.opponentState?.aimAngle || 0,
         projectile: this.opponentProjectile,
-        droppingBubbles: [],
-        particles: this.opponentParticles,
-        scorePopups: [],
-        confettiList: [],
-        trajectory: oppTrajectory,
-        shotsBeforeDrop: this.opponentState?.shotsBeforeDrop || 6,
-        maxShotsBeforeDrop: 6,
-        warningTime: 0
+        lastShotId: this.lastOpponentShotId,
+        particles: this.opponentParticles
       });
     }
   }

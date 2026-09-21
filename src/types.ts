@@ -142,11 +142,12 @@ export interface RoomData {
   };
   p1: PlayerNetworkState;
   p2?: PlayerNetworkState;
+  spectators?: Record<string, { id: string; name: string; joinedAt: number }>;
 }
 
 export interface ChatMessage {
   id: string;
-  sender: 'p1' | 'p2' | 'system';
+  sender: 'p1' | 'p2' | 'spectator' | 'system';
   senderName: string;
   text: string;
   timestamp: number;

@@ -85,6 +85,17 @@ body {
   text-shadow: 0 0 12px rgba(255, 51, 102, 0.4);
 }
 
+.stage-row {
+  display: flex;
+  gap: 6px;
+}
+
+.spectator-tag {
+  color: var(--accent-gold);
+  background: rgba(255, 208, 0, 0.12);
+  border-color: rgba(255, 208, 0, 0.35);
+}
+
 .stage-badge {
   font-size: 0.72rem;
   font-weight: 800;
@@ -721,6 +732,11 @@ body {
   background: rgba(255, 45, 85, 0.08);
 }
 
+.chat-msg-spectator {
+  border-left-color: #9aa7c7;
+  background: rgba(154, 167, 199, 0.08);
+}
+
 .chat-msg-system {
   border-left-color: var(--accent-gold);
   background: rgba(255, 208, 0, 0.08);
@@ -749,6 +765,11 @@ body {
 .badge-p2 {
   background: var(--accent-pink);
   color: #ffffff;
+}
+
+.badge-spectator {
+  background: #9aa7c7;
+  color: #0b1020;
 }
 
 .badge-system {
@@ -1153,4 +1174,17 @@ body {
     border-radius: 0;
     border: none;
   }
+}
+
+/* Spectator mode: no player controls, show the leave button */
+.spectator-only {
+  display: none;
+}
+
+.spectating .spectator-only {
+  display: flex;
+}
+
+.spectating .swap-btn {
+  display: none;
 }
