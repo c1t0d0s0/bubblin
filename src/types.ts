@@ -82,6 +82,30 @@ export interface StageData {
   layout: (BubbleColor | null)[][];
 }
 
+export interface NetworkProjectile {
+  id?: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: BubbleColor;
+}
+
+/**
+ * Online CO-OP: the host simulates the shared board and publishes this snapshot (inside its p1 state);
+ * the guest only renders it and sends its inputs (aimAngle / shootSeq / swapSeq) through its p2 state.
+ */
+export interface CoopSnapshot {
+  epoch: number; // bumps whenever a stage / round is (re)loaded
+  phase: 'PLAYING' | 'STAGE_CLEAR' | 'GAME_OVER';
+  stageId: number;
+  targetCeilingY: number;
+  maxShotsBeforeDrop: number;
+  p2CurrentBubble: BubbleColor;
+  p2NextBubble: BubbleColor;
+  p2Projectile: NetworkProjectile | null;
+}
+
 export interface PlayerNetworkState {
   id: string;
   name: string;
@@ -89,7 +113,7 @@ export interface PlayerNetworkState {
   aimAngle: number;
   currentBubble: BubbleColor;
   nextBubble: BubbleColor;
-  projectile: { id?: number; x: number; y: number; vx: number; vy: number; color: BubbleColor } | null;
+  projectile: NetworkProjectile | null;
   score: number;
   combo: number;
   ceilingY: number;
@@ -99,6 +123,9 @@ export interface PlayerNetworkState {
   isCleared: boolean;
   attackPending: number;
   lastActive: number;
+  coop?: CoopSnapshot; // host (p1) only, CO-OP mode
+  shootSeq?: number; // guest (p2) only, CO-OP mode: incremented per shot request
+  swapSeq?: number; // guest (p2) only, CO-OP mode: incremented per swap request
 }
 
 export interface RoomData {

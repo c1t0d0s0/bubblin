@@ -355,7 +355,7 @@ export class UIManager {
     this.shotsCounterEl.innerHTML = dotsHtml;
   }
 
-  public showStageClear(score: number, stageName: string, isFinalStage: boolean = false): void {
+  public showStageClear(score: number, stageName: string, isFinalStage: boolean = false, waitForHost: boolean = false): void {
     this.clearScoreEl.textContent = `Score: ${score.toLocaleString()}`;
     const stageTitle = document.getElementById('stage-clear-title');
     const cheer = document.querySelector('.clear-cheer') as HTMLElement;
@@ -370,10 +370,16 @@ export class UIManager {
       if (cheer) cheer.textContent = translations.clearCheerNormal[currentLang];
       if (nextBtn) nextBtn.textContent = translations.nextStageBtn[currentLang];
     }
+    // Online CO-OP guest: only the host advances the stage
+    nextBtn?.classList.toggle('hidden', waitForHost);
     this.stageClearModal.classList.remove('hidden');
   }
 
-  public showGameOver(score: number, highScore: number): void {
+  public hideStageClearModal(): void {
+    this.stageClearModal.classList.add('hidden');
+  }
+
+  public showGameOver(score: number, highScore: number, waitForHost: boolean = false): void {
     this.isVersusResult = false;
     this.gameOverScoreEl.innerHTML = `Score: <strong>${score.toLocaleString()}</strong><br>High Score: <strong>${highScore.toLocaleString()}</strong>`;
     const gameOverSub = document.querySelector('.gameover-sub');
@@ -384,7 +390,12 @@ export class UIManager {
       restartBtn.disabled = false;
     }
     const leaveBtn = document.getElementById('leave-game-btn');
-    if (leaveBtn) leaveBtn.classList.add('hidden');
+    if (leaveBtn) leaveBtn.classList.toggle('hidden', !waitForHost);
+    if (waitForHost && restartBtn) {
+      // Online CO-OP guest: the host restarts the game
+      restartBtn.textContent = '⏳ ホストの再開を待っています...';
+      restartBtn.disabled = true;
+    }
     this.gameOverModal.classList.remove('hidden');
   }
 

@@ -98,6 +98,22 @@ class BubblinGame {
   private keyLeftP2: boolean = false;
   private keyRightP2: boolean = false;
 
+  // Online CO-OP: host simulates the shared board, guest renders snapshots and sends inputs
+  private coopEpoch: number = 0; // host: bumped on every stage / round load
+  private coopAppliedEpoch: number = -1; // guest: last host epoch applied
+  private lastCoopSync: number = 0; // host: last snapshot time
+  private lastCoopGridJson: string = '';
+  private lastCoopGridTime: number = 0;
+  private lastCoopApplied: number = 0; // guest: lastActive of the last applied snapshot
+  private guestShootSeq: number = 0; // guest: shot requests sent
+  private guestSwapSeq: number = 0; // guest: swap requests sent
+  private guestInputSeen: boolean = false; // host: first guest state received after (re)start
+  private lastGuestShootSeq: number = 0;
+  private lastGuestSwapSeq: number = 0;
+  private aimFlushTimer: number | null = null;
+  private p2AimTarget: number = 0; // host: guest's aim (eased into p2AimAngle)
+  private remoteAimTarget: number = 0; // guest: host's aim (eased into aimAngle)
+
   // Visual effects entities
   private droppingBubbles: DroppingBubble[] = [];
   private particles: Particle[] = [];
@@ -237,8 +253,228 @@ class BubblinGame {
     this.resizeCanvas();
   }
 
+  // ===== Online CO-OP (host-authoritative shared board) =====
+
+  private isCoopHost(): boolean {
+    return this.playMode === 'COOP' && !this.isLocal2P && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p1';
+  }
+
+  private isCoopGuest(): boolean {
+    return this.playMode === 'COOP' && !this.isLocal2P && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p2';
+  }
+
+  private toNetProjectile(p: Projectile | null) {
+    return p ? { x: p.x, y: p.y, vx: p.vx, vy: p.vy, color: p.color } : null;
+  }
+
+  /** Host: publish the shared board (~20Hz). The grid is sent when it changes and as a 1s heartbeat. */
+  private tickCoopHostSync(): void {
+    const now = performance.now();
+    if (now - this.lastCoopSync < 50) return;
+    this.lastCoopSync = now;
+
+    const phase = this.state === 'STAGE_CLEAR' || this.state === 'GAME_OVER' ? this.state : 'PLAYING';
+    const payload: Partial<PlayerNetworkState> = {
+      aimAngle: this.aimAngle,
+      currentBubble: this.currentBubbleColor,
+      nextBubble: this.nextBubbleColor,
+      projectile: this.toNetProjectile(this.projectile),
+      score: this.score,
+      combo: this.combo,
+      ceilingY: this.ceilingY,
+      shotsBeforeDrop: this.shotsBeforeDrop,
+      coop: {
+        epoch: this.coopEpoch,
+        phase,
+        stageId: this.currentStageId,
+        targetCeilingY: this.targetCeilingY,
+        maxShotsBeforeDrop: this.maxShotsBeforeDrop,
+        p2CurrentBubble: this.p2CurrentBubbleColor,
+        p2NextBubble: this.p2NextBubbleColor,
+        p2Projectile: this.toNetProjectile(this.p2Projectile)
+      }
+    };
+
+    const gridArr = serializeGrid(this.grid);
+    const gridJson = JSON.stringify(gridArr);
+    if (gridJson !== this.lastCoopGridJson || now - this.lastCoopGridTime > 1000) {
+      payload.grid = gridArr;
+      this.lastCoopGridJson = gridJson;
+      this.lastCoopGridTime = now;
+    }
+    networkManager.syncPlayerState(payload, true);
+  }
+
+  /** Host: apply the guest's (P2) aim / shoot / swap requests. */
+  private applyGuestInput(g: PlayerNetworkState): void {
+    if (typeof g.aimAngle === 'number') {
+      this.p2AimTarget = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, g.aimAngle));
+    }
+    const shootSeq = g.shootSeq || 0;
+    const swapSeq = g.swapSeq || 0;
+    if (!this.guestInputSeen) {
+      // Ignore requests made before this (re)start
+      this.guestInputSeen = true;
+      this.lastGuestShootSeq = shootSeq;
+      this.lastGuestSwapSeq = swapSeq;
+      return;
+    }
+    if (swapSeq !== this.lastGuestSwapSeq) {
+      this.lastGuestSwapSeq = swapSeq;
+      this.swapBubbles(true);
+    }
+    if (shootSeq !== this.lastGuestShootSeq) {
+      this.lastGuestShootSeq = shootSeq;
+      this.shoot(true);
+    }
+  }
+
+  /** Guest: render the host's snapshot (p1 state). */
+  private applyCoopSnapshot(s: PlayerNetworkState): void {
+    const c = s.coop;
+    if (!c || s.lastActive === this.lastCoopApplied) return;
+    this.lastCoopApplied = s.lastActive;
+
+    // New stage / round on the host -> reset local effects and board
+    if (c.epoch !== this.coopAppliedEpoch) {
+      this.coopAppliedEpoch = c.epoch;
+      this.currentStageId = c.stageId;
+      this.currentStageData = getStage(c.stageId);
+      this.grid = createEmptyGrid();
+      // Provisional board from the stage layout until the host's grid arrives
+      const layout = this.currentStageData.layout;
+      for (let r = 0; r < layout.length; r++) {
+        for (let cc = 0; cc < layout[r].length; cc++) {
+          if (layout[r][cc] && r < this.grid.length && cc < this.grid[r].length) {
+            this.grid[r][cc].color = layout[r][cc];
+          }
+        }
+      }
+      this.projectile = null;
+      this.p2Projectile = null;
+      this.droppingBubbles = [];
+      this.particles = [];
+      this.scorePopups = [];
+      this.confettiList = [];
+      this.combo = 0;
+      if (this.state !== 'PLAYING') {
+        this.state = 'PLAYING';
+        this.ui.hideStageClearModal();
+        this.ui.hideGameOverModal();
+        soundManager.startBgm();
+        soundManager.setBgmDucking(false);
+      }
+    }
+
+    // Board (pop effects for cells that disappeared)
+    if (s.grid && s.grid.length > 0) {
+      let cleared = 0;
+      deserializeGrid(s.grid, this.grid, (row, col, oldColor) => {
+        const pos = getHexPosition(row, col, s.ceilingY || 0);
+        this.triggerPopParticles(pos.x, pos.y, oldColor);
+        cleared++;
+      });
+      if (cleared >= 3) soundManager.playPop(1);
+    }
+
+    // Host (P1, left launcher)
+    this.remoteAimTarget = typeof s.aimAngle === 'number' ? s.aimAngle : 0;
+    if (s.currentBubble in COLOR_DEFS) this.currentBubbleColor = s.currentBubble;
+    if (s.nextBubble in COLOR_DEFS) this.nextBubbleColor = s.nextBubble;
+    this.projectile = this.adoptProjectile(this.projectile, s.projectile, true);
+
+    // Me (P2, right launcher)
+    if (c.p2CurrentBubble in COLOR_DEFS) this.p2CurrentBubbleColor = c.p2CurrentBubble;
+    if (c.p2NextBubble in COLOR_DEFS) this.p2NextBubbleColor = c.p2NextBubble;
+    this.p2Projectile = this.adoptProjectile(this.p2Projectile, c.p2Projectile || null, false);
+
+    // Shared status
+    const prevShots = this.shotsBeforeDrop;
+    // Keep the locally interpolated ceiling unless it drifted from the host's
+    if (Math.abs(this.ceilingY - (s.ceilingY || 0)) > 6) this.ceilingY = s.ceilingY || 0;
+    this.targetCeilingY = c.targetCeilingY || 0;
+    this.shotsBeforeDrop = s.shotsBeforeDrop;
+    this.maxShotsBeforeDrop = c.maxShotsBeforeDrop;
+    this.score = s.score || 0;
+    this.combo = s.combo || 0;
+    if (this.score > this.highScore) this.highScore = this.score;
+    if (this.shotsBeforeDrop === 1 && prevShots !== 1) {
+      soundManager.playWarning();
+      this.warningTime = 60;
+    }
+    this.ui.updateHUD(this.score, this.highScore, this.currentStageId, this.shotsBeforeDrop, this.maxShotsBeforeDrop);
+
+    // Phase
+    if (c.phase === 'STAGE_CLEAR' && this.state === 'PLAYING') {
+      this.state = 'STAGE_CLEAR';
+      soundManager.setBgmDucking(true);
+      soundManager.playStageClear();
+      this.triggerConfetti();
+      const isFinal = this.currentStageId === 30;
+      setTimeout(() => {
+        if (this.state === 'STAGE_CLEAR') {
+          this.ui.showStageClear(this.score, this.currentStageData.name, isFinal, true);
+        }
+      }, 800);
+    } else if (c.phase === 'GAME_OVER' && this.state === 'PLAYING') {
+      this.state = 'GAME_OVER';
+      soundManager.stopBgm();
+      soundManager.playGameOver();
+      this.renderer.triggerShake(12);
+      setTimeout(() => {
+        if (this.state === 'GAME_OVER') this.ui.showGameOver(this.score, this.highScore, true);
+      }, 600);
+    }
+  }
+
+  /** Guest: take the host's projectile, but keep the locally extrapolated one when it is close (avoids jitter). */
+  private adoptProjectile(
+    local: Projectile | null,
+    net: { x: number; y: number; vx: number; vy: number; color: BubbleColor } | null,
+    playSound: boolean
+  ): Projectile | null {
+    if (!net) return null;
+    if (local && local.color === net.color && Math.abs(local.x - net.x) < 40 && Math.abs(local.y - net.y) < 40) {
+      local.vx = net.vx;
+      local.vy = net.vy;
+      return local;
+    }
+    if (!local && playSound) soundManager.playShoot();
+    return { x: net.x, y: net.y, vx: net.vx, vy: net.vy, color: net.color, radius: BUBBLE_RADIUS };
+  }
+
+  /** Guest: no simulation, only steering and visual extrapolation of the host's state. */
+  private updateCoopGuest(): void {
+    if (this.state === 'PLAYING') {
+      if (this.keyLeft) this.adjustAim(-0.035);
+      if (this.keyRight) this.adjustAim(0.035);
+    }
+    this.aimAngle += (this.remoteAimTarget - this.aimAngle) * 0.45;
+
+    if (this.ceilingY < this.targetCeilingY) {
+      this.ceilingY = Math.min(this.targetCeilingY, this.ceilingY + 2);
+    }
+    if (this.warningTime > 0) this.warningTime--;
+
+    if (this.projectile) {
+      const res = updateProjectile(this.projectile, this.grid, this.ceilingY);
+      if (res.bounced) soundManager.playBounce();
+      if (res.hit) this.projectile = null;
+    }
+    if (this.p2Projectile) {
+      const res = updateProjectile(this.p2Projectile, this.grid, this.ceilingY);
+      if (res.bounced) soundManager.playBounce();
+      if (res.hit) this.p2Projectile = null;
+    }
+  }
+
   private setupNetworkListeners(): void {
     networkManager.onOpponentState((state) => {
+      if (this.playMode === 'COOP') {
+        if (this.isCoopHost()) this.applyGuestInput(state);
+        else if (this.isCoopGuest()) this.applyCoopSnapshot(state);
+        return;
+      }
       if (this.playMode !== 'VERSUS') return;
 
       this.opponentState = state;
@@ -385,6 +621,9 @@ class BubblinGame {
     this.opponentProjectile = null;
     this.lastOpponentShotId = 0;
     this.opponentParticles = [];
+    this.guestInputSeen = false;
+    this.coopAppliedEpoch = -1;
+    this.lastCoopApplied = 0;
     this.loadStage(1);
 
     if (this.playMode === 'VERSUS') {
@@ -502,7 +741,9 @@ class BubblinGame {
       const canvasX = (e.clientX - rect.left) * scaleX;
       const canvasY = (e.clientY - rect.top) * scaleY;
 
-      const originX = this.playMode === 'COOP' ? LAUNCHER_COOP_P1_X : LAUNCHER_X;
+      const originX = this.playMode === 'COOP'
+        ? (this.isCoopGuest() ? LAUNCHER_COOP_P2_X : LAUNCHER_COOP_P1_X)
+        : LAUNCHER_X;
       const dx = canvasX - originX;
       const dy = canvasY - LAUNCHER_Y;
       if (dy < -10) {
@@ -573,16 +814,43 @@ class BubblinGame {
   }
 
   public setAim(angle: number): void {
-    this.aimAngle = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, angle));
-    networkManager.syncPlayerState({ aimAngle: this.aimAngle });
+    const clamped = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, angle));
+    if (this.isCoopGuest()) {
+      // Online CO-OP guest steers the P2 launcher (aimAngle mirrors the host's P1 launcher)
+      this.p2AimAngle = clamped;
+    } else {
+      this.aimAngle = clamped;
+    }
+    networkManager.syncPlayerState({ aimAngle: clamped });
+
+    // The sync above is throttled and may drop the last step of a movement: send the final angle
+    if (networkManager.getRoomId()) {
+      if (this.aimFlushTimer !== null) clearTimeout(this.aimFlushTimer);
+      this.aimFlushTimer = window.setTimeout(() => {
+        this.aimFlushTimer = null;
+        networkManager.syncPlayerState({ aimAngle: this.isCoopGuest() ? this.p2AimAngle : this.aimAngle }, true);
+      }, 60);
+    }
   }
 
   public adjustAim(delta: number): void {
-    this.setAim(this.aimAngle + delta);
+    this.setAim((this.isCoopGuest() ? this.p2AimAngle : this.aimAngle) + delta);
   }
 
   public swapBubbles(isP2: boolean = false): void {
     if (this.state !== 'PLAYING') return;
+
+    if (!isP2 && this.isCoopGuest()) {
+      // Online CO-OP guest: ask the host, and swap locally right away for responsiveness
+      if (this.p2Projectile) return;
+      const temp = this.p2CurrentBubbleColor;
+      this.p2CurrentBubbleColor = this.p2NextBubbleColor;
+      this.p2NextBubbleColor = temp;
+      soundManager.playBounce();
+      this.guestSwapSeq++;
+      networkManager.syncPlayerState({ swapSeq: this.guestSwapSeq }, true);
+      return;
+    }
 
     if (isP2) {
       if (this.p2Projectile) return;
@@ -605,6 +873,7 @@ class BubblinGame {
   }
 
   private loadStage(stageId: number): void {
+    this.coopEpoch++;
     this.currentStageId = stageId;
     this.currentStageData = getStage(stageId);
     this.grid = createEmptyGrid();
@@ -684,6 +953,15 @@ class BubblinGame {
 
   public shoot(isP2: boolean = false): void {
     if (this.state !== 'PLAYING') return;
+
+    if (!isP2 && this.isCoopGuest()) {
+      // Online CO-OP guest: the host fires the bubble
+      if (this.p2Projectile) return;
+      soundManager.playShoot();
+      this.guestShootSeq++;
+      networkManager.syncPlayerState({ shootSeq: this.guestShootSeq }, true);
+      return;
+    }
 
     if (isP2) {
       if (this.p2Projectile) return;
@@ -1014,14 +1292,19 @@ class BubblinGame {
     }
 
     // Sync state
-    networkManager.syncPlayerState({
-      grid: serializeGrid(this.grid),
-      score: this.score,
-      combo: this.combo,
-      ceilingY: this.ceilingY,
-      shotsBeforeDrop: this.shotsBeforeDrop,
-      projectile: null
-    }, true);
+    if (this.isCoopHost()) {
+      this.lastCoopSync = 0;
+      this.tickCoopHostSync();
+    } else {
+      networkManager.syncPlayerState({
+        grid: serializeGrid(this.grid),
+        score: this.score,
+        combo: this.combo,
+        ceilingY: this.ceilingY,
+        shotsBeforeDrop: this.shotsBeforeDrop,
+        projectile: null
+      }, true);
+    }
 
     // Check Deadline Crossing (Game Over)
     if (isDeadlineCrossed(this.grid, this.ceilingY, DEADLINE_Y)) {
@@ -1106,6 +1389,11 @@ class BubblinGame {
   }
 
   private update(): void {
+    if (this.isCoopGuest()) {
+      this.updateCoopGuest();
+      return;
+    }
+
     // Keyboard steering
     if (this.state === 'PLAYING') {
       if (this.keyLeft) {
@@ -1113,6 +1401,11 @@ class BubblinGame {
       }
       if (this.keyRight) {
         this.adjustAim(0.035);
+      }
+
+      // P2 (online CO-OP guest) aim, smoothed between network updates
+      if (this.isCoopHost()) {
+        this.p2AimAngle += (this.p2AimTarget - this.p2AimAngle) * 0.45;
       }
 
       // P2 Local controls
@@ -1190,6 +1483,10 @@ class BubblinGame {
       this.renderer.triggerShake(3);
       this.addScore(150, '+150', bx, by - 14, COLOR_DEFS[bColor].light, 16);
     });
+
+    if (this.isCoopHost() && (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR' || this.state === 'GAME_OVER')) {
+      this.tickCoopHostSync();
+    }
   }
 
   private render(): void {
