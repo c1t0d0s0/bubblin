@@ -40,6 +40,7 @@ import {
   StageData
 } from './types';
 import { UIManager } from './ui';
+import { initAnalytics } from './analytics';
 
 class BubblinGame {
   private canvas: HTMLCanvasElement;
@@ -654,5 +655,6 @@ class BubblinGame {
 
 // Boot game when DOM is ready
 window.addEventListener('DOMContentLoaded', () => {
+  initAnalytics();
   new BubblinGame();
 });
