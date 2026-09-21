@@ -574,8 +574,8 @@ body {
   height: 100%;
 }
 
-/* Desktop: fixed design size, uniformly scaled to fit the window (--ui-scale set in main.ts) */
-@media (min-width: 901px) {
+/* Desktop / tablet (wider than a phone): fixed design size, uniformly scaled to fit the window (--ui-scale set in main.ts) */
+@media (min-width: 521px) {
   #game-scaler {
     flex: none;
     width: auto;

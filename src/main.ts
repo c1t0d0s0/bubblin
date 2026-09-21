@@ -202,13 +202,13 @@ class BubblinGame {
     }
   }
 
-  // Desktop: scale the whole game (canvas, HUD, chat) to fit the browser window
+  // Desktop / tablet: scale the whole game (canvas, HUD, chat) to fit the browser window
   private updateLayoutScale(): void {
     const scaler = document.getElementById('game-scaler');
     if (!scaler) return;
 
     let scale = 1;
-    if (window.matchMedia('(min-width: 901px)').matches && scaler.offsetWidth && scaler.offsetHeight) {
+    if (window.matchMedia('(min-width: 521px)').matches && scaler.offsetWidth && scaler.offsetHeight) {
       const margin = 16;
       scale = Math.min(
         (window.innerWidth - margin * 2) / scaler.offsetWidth,
