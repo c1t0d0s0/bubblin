@@ -956,46 +956,81 @@ body {
   outline: none;
 }
 
+.invite-notice-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 210, 255, 0.15);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: #d8f5ff;
+  text-align: left;
+}
+
+.invite-notice-icon {
+  font-size: 1.2rem;
+}
+
+.room-code-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.refresh-code-btn {
+  background: rgba(100, 130, 240, 0.25);
+  border: 1px solid rgba(100, 130, 240, 0.4);
+  border-radius: 6px;
+  color: var(--accent-cyan);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.refresh-code-btn:hover {
+  background: rgba(0, 210, 255, 0.2);
+  border-color: var(--accent-cyan);
+  transform: scale(1.04);
+}
+
+#room-code-input {
+  font-family: monospace, 'Arial Black', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  background: rgba(12, 16, 32, 0.9);
+  border: 1.5px solid rgba(255, 208, 0, 0.4);
+}
+
+#room-code-input:focus {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 10px rgba(255, 208, 0, 0.3);
+}
+
 .room-action-buttons {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.action-create-btn {
+.action-start-room-btn {
   background: linear-gradient(180deg, #ff2d55 0%, #d60035 100%);
   color: #ffffff;
   border: 2px solid #ff7590;
-  box-shadow: 0 6px 18px rgba(255, 45, 85, 0.35);
-  font-size: 1rem;
-  padding: 11px;
+  box-shadow: 0 6px 18px rgba(255, 45, 85, 0.4);
+  font-size: 1.05rem;
+  padding: 12px;
 }
 
-.join-room-box {
-  display: flex;
-  gap: 6px;
-}
-
-.join-room-box input {
-  flex: 1;
-  padding: 9px 12px;
-  border-radius: 8px;
-  background: rgba(25, 28, 48, 0.9);
-  border: 1px solid rgba(100, 130, 240, 0.3);
-  color: #ffffff;
-  font-family: inherit;
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  outline: none;
-}
-
-.action-join-btn {
-  background: linear-gradient(180deg, #ffd000 0%, #c99e00 100%);
-  color: #1a1500;
-  border: 2px solid #ffe166;
-  font-size: 0.95rem;
-  padding: 9px 16px;
-  width: auto;
+.action-start-room-btn:hover {
+  background: linear-gradient(180deg, #ff456b 0%, #eb003e 100%);
 }
 
 .local-play-box {
@@ -1022,16 +1057,6 @@ body {
   font-size: 0.7rem;
   color: var(--text-dim);
   margin-top: 6px;
-}
-
-.text-link-btn {
-  background: none;
-  border: none;
-  color: var(--accent-cyan);
-  font-size: 0.8rem;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 4px;
 }
 
 .waiting-header {
@@ -1096,6 +1121,13 @@ body {
   padding: 10px;
 }
 
+.waiting-tip {
+  font-size: 0.76rem;
+  color: #a0b2d6;
+  line-height: 1.4;
+  margin: 4px 0 8px 0;
+}
+
 .cancel-btn {
   background: rgba(60, 65, 90, 0.6);
   border: 1px solid rgba(120, 130, 160, 0.4);
@@ -1103,36 +1135,6 @@ body {
   font-size: 0.85rem;
   padding: 8px;
   box-shadow: none;
-}
-
-#firebase-settings-panel textarea {
-  width: 100%;
-  background: rgba(14, 16, 28, 0.9);
-  border: 1px solid rgba(100, 130, 240, 0.3);
-  border-radius: 8px;
-  padding: 8px;
-  color: #ffffff;
-  font-family: monospace;
-  font-size: 0.8rem;
-  outline: none;
-  resize: vertical;
-}
-
-.settings-desc {
-  font-size: 0.75rem;
-  color: var(--text-dim);
-}
-
-.settings-btn-row {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.small-btn {
-  width: auto;
-  padding: 6px 14px;
-  font-size: 0.85rem;
 }
 
 .modal-close-btn {

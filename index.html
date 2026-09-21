@@ -161,16 +161,16 @@
         <div class="modal-card multiplayer-card">
           <div class="modal-icon">🎮</div>
           <h2>2人同時プレイ</h2>
-          <p class="multi-sub">モードを選択してルームを作成・参加してください</p>
+          <p id="multi-sub-text" class="multi-sub">モードを選択して参加してください</p>
 
           <!-- Mode Select Tabs -->
           <div class="mode-select-tabs">
-            <button id="mode-tab-versus" class="mode-tab active" data-mode="VERSUS">
+            <button type="button" id="mode-tab-versus" class="mode-tab active" data-mode="VERSUS">
               <span class="mode-icon">⚔️</span>
               <span class="mode-name">対戦モード</span>
               <span class="mode-desc">左右2画面・スコア＆お邪魔競争</span>
             </button>
-            <button id="mode-tab-coop" class="mode-tab" data-mode="COOP">
+            <button type="button" id="mode-tab-coop" class="mode-tab" data-mode="COOP">
               <span class="mode-icon">🤝</span>
               <span class="mode-name">協力モード</span>
               <span class="mode-desc">1画面2連装砲台・共同クリア</span>
@@ -179,38 +179,39 @@
 
           <!-- Lobby Action Panel -->
           <div id="multi-action-panel" class="multi-section">
+            <div id="invite-notice-box" class="invite-notice-box hidden">
+              <span class="invite-notice-icon">✉️</span>
+              <span id="invite-notice-text">ルームに招待されました！プレイヤー名を設定して参加してください。</span>
+            </div>
+
             <div class="input-group">
               <label for="player-name-input">プレイヤー名:</label>
-              <input type="text" id="player-name-input" value="Player 1" maxlength="12" />
+              <input type="text" id="player-name-input" value="Player 1" maxlength="12" placeholder="プレイヤー名を入力" />
+            </div>
+
+            <div class="input-group">
+              <div class="room-code-label-row">
+                <label for="room-code-input">ROOM CODE (ルームコード):</label>
+                <button type="button" id="refresh-room-code-btn" class="refresh-code-btn" title="新しいコードを生成">🎲 再生成</button>
+              </div>
+              <input type="text" id="room-code-input" value="BUB77" maxlength="10" placeholder="例: BUB77" />
             </div>
 
             <div class="room-action-buttons">
-              <button id="create-room-btn" class="modal-btn action-create-btn">
-                ✨ 部屋を作る (HOST)
+              <button type="button" id="start-multi-btn" class="modal-btn action-start-room-btn">
+                🎮 参加する
               </button>
-              <div class="join-room-box">
-                <input type="text" id="join-room-input" placeholder="ルームコード (例: BUB77)" maxlength="10" />
-                <button id="join-room-btn" class="modal-btn action-join-btn">
-                  参加 (JOIN)
-                </button>
-              </div>
             </div>
 
             <div class="local-play-box">
-              <button id="local-2p-btn" class="modal-btn local-btn">
+              <button type="button" id="local-2p-btn" class="modal-btn local-btn">
                 🖥️ 1台のPCで2人プレイ (オフライン対戦/協力)
               </button>
               <p class="local-tip">※P1: [A/D + SPACE] / P2: [←/→ + ENTER]</p>
             </div>
-
-            <div class="firebase-config-link-box">
-              <button id="toggle-firebase-settings-btn" class="text-link-btn">
-                ⚙️ Firebase接続設定
-              </button>
-            </div>
           </div>
 
-          <!-- Room Waiting Panel (shown when room is created) -->
+          <!-- Room Waiting Panel (shown when host creates room and waits) -->
           <div id="multi-waiting-panel" class="multi-section hidden">
             <div class="waiting-header">
               <div class="waiting-spinner"></div>
@@ -220,26 +221,16 @@
               <span class="code-label">ROOM CODE:</span>
               <span id="waiting-room-code" class="code-value">BUB77</span>
             </div>
-            <button id="waiting-copy-url-btn" class="modal-btn copy-url-btn">
+            <button type="button" id="waiting-copy-url-btn" class="modal-btn copy-url-btn">
               📋 招待リンクをコピー
             </button>
-            <button id="cancel-room-btn" class="modal-btn cancel-btn">
-              キャンセル
+            <p class="waiting-tip">招待リンクを対戦相手に送ってください。<br />相手が参加すると自動でゲームが開始します。</p>
+            <button type="button" id="cancel-room-btn" class="modal-btn cancel-btn">
+              ✕ キャンセル
             </button>
           </div>
 
-          <!-- Firebase Settings Sub-Panel -->
-          <div id="firebase-settings-panel" class="multi-section hidden">
-            <h3>Firebase Realtime Database 設定</h3>
-            <p class="settings-desc">Firebase コンソールの設定JSONまたは Database URL を設定してください。</p>
-            <textarea id="firebase-config-textarea" placeholder='{"databaseURL": "https://xxx-default-rtdb.firebaseio.com", "apiKey": "..."}' rows="4"></textarea>
-            <div class="settings-btn-row">
-              <button id="save-firebase-config-btn" class="modal-btn small-btn">保存</button>
-              <button id="close-firebase-settings-btn" class="modal-btn small-btn cancel-btn">閉じる</button>
-            </div>
-          </div>
-
-          <button id="close-multi-modal-btn" class="modal-close-btn" aria-label="Close">✕</button>
+          <button type="button" id="close-multi-modal-btn" class="modal-close-btn" aria-label="Close">✕</button>
         </div>
       </div>
 

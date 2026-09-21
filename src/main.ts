@@ -131,6 +131,7 @@ class BubblinGame {
       onStartGame: () => this.startGame(),
       onStartMultiplayer: (mode, isHost, roomId, name, isLocal) =>
         this.startMultiplayer(mode, isHost, roomId, name, isLocal),
+      onCancelWaiting: () => this.cancelWaiting(),
       onNextStage: () => this.nextStage(),
       onRestartGame: () => this.restartGame(),
       onAimChange: (delta) => this.adjustAim(delta),
@@ -148,6 +149,13 @@ class BubblinGame {
 
     // Start game loop
     requestAnimationFrame((t) => this.gameLoop(t));
+  }
+
+  public async cancelWaiting(): Promise<void> {
+    await networkManager.leaveRoom();
+    this.state = 'TITLE';
+    this.chatManager.setVisible(false);
+    this.ui.hideWaitingPanel();
   }
 
   private setupCanvasSize(): void {
@@ -203,7 +211,7 @@ class BubblinGame {
 
   public async startMultiplayer(
     mode: PlayMode,
-    isHost: boolean,
+    _isHost: boolean,
     roomId?: string,
     playerName: string = 'Player 1',
     isLocal: boolean = false
@@ -219,9 +227,36 @@ class BubblinGame {
       return;
     }
 
-    if (isHost) {
+    const targetRoomId = (roomId || '').trim().toUpperCase();
+    if (!targetRoomId) {
+      alert('ルームコードを指定してください。');
+      return;
+    }
+
+    // Check if room exists in Firebase
+    const check = await networkManager.checkRoom(targetRoomId);
+
+    if (check.exists) {
+      if (check.status === 'PLAYING') {
+        alert('このルームはすでにゲーム中、または満員です。別のルームコードを指定してください。');
+        return;
+      }
+
+      // Room exists and is waiting for P2 -> Join as P2!
+      const res = await networkManager.joinRoom(targetRoomId, playerName);
+      if (res.success) {
+        this.playMode = res.mode;
+        this.ui.hideMultiplayerModal();
+        this.chatManager.setVisible(true);
+        this.chatManager.updateRoomInfo(targetRoomId, res.mode);
+        this.startMultiplayerGame();
+      } else {
+        alert(res.error || 'ルームへの参加に失敗しました。');
+      }
+    } else {
+      // Room does not exist -> Create room as Host (P1) and enter Waiting Mode!
       try {
-        const code = await networkManager.createRoom(mode, playerName, 1);
+        const code = await networkManager.createRoom(mode, playerName, 1, targetRoomId);
         this.state = 'LOBBY';
         this.ui.showWaitingPanel(code);
         this.chatManager.setVisible(true);
@@ -233,17 +268,6 @@ class BubblinGame {
           ? 'Firebaseの権限エラー (PERMISSION_DENIED) が発生しました。\nFirebase Console の「Realtime Database > ルール」で read / write 権限が許可されているかご確認ください。'
           : `ルーム作成に失敗しました: ${err?.message || err}`;
         alert(msg);
-      }
-    } else if (roomId) {
-      const res = await networkManager.joinRoom(roomId, playerName);
-      if (res.success) {
-        this.playMode = res.mode;
-        this.ui.hideMultiplayerModal();
-        this.chatManager.setVisible(true);
-        this.chatManager.updateRoomInfo(roomId, res.mode);
-        this.startMultiplayerGame();
-      } else {
-        alert(res.error || 'ルームへの参加に失敗しました。');
       }
     }
   }

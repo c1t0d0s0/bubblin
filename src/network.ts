@@ -57,7 +57,7 @@ export class NetworkManager {
   /**
    * Generates a short, human-friendly 5-character Room ID (e.g. BUB77).
    */
-  private generateRoomCode(): string {
+  public generateRoomCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = 'BUB';
     for (let i = 0; i < 3; i++) {
@@ -67,12 +67,31 @@ export class NetworkManager {
   }
 
   /**
+   * Checks if a room exists in Firebase and returns its status/mode.
+   */
+  public async checkRoom(roomId: string): Promise<{ exists: boolean; status?: RoomStatus; mode?: PlayMode }> {
+    roomId = roomId.trim().toUpperCase();
+    if (!roomId) return { exists: false };
+    try {
+      this.db = await initFirebase();
+      if (!this.db) return { exists: false };
+      const snapshot = await get(ref(this.db, `rooms/${roomId}`));
+      if (!snapshot.exists()) return { exists: false };
+      const val = snapshot.val() as RoomData;
+      return { exists: true, status: val.status, mode: val.mode };
+    } catch {
+      return { exists: false };
+    }
+  }
+
+  /**
    * Creates a new multiplayer room.
    */
   public async createRoom(
     mode: PlayMode,
     playerName: string = 'Player 1',
-    stageId: number = 1
+    stageId: number = 1,
+    customRoomId?: string
   ): Promise<string> {
     this.playMode = mode;
     this.mySlot = 'p1';
@@ -82,12 +101,16 @@ export class NetworkManager {
     if (!this.db) {
       console.warn('[Network] Firebase not connected. Starting in Local Mock Mode.');
       this.isLocalMode = true;
-      this.currentRoomId = 'LOCAL-' + Math.floor(Math.random() * 1000);
+      this.currentRoomId = (customRoomId && customRoomId.trim().length > 0)
+        ? customRoomId.trim().toUpperCase()
+        : ('LOCAL-' + Math.floor(Math.random() * 1000));
       return this.currentRoomId;
     }
 
     this.isLocalMode = false;
-    const roomId = this.generateRoomCode();
+    const roomId = (customRoomId && customRoomId.trim().length > 0)
+      ? customRoomId.trim().toUpperCase()
+      : this.generateRoomCode();
     this.currentRoomId = roomId;
 
     const initialPlayerState: PlayerNetworkState = {
@@ -370,8 +393,11 @@ export class NetworkManager {
   public async leaveRoom(): Promise<void> {
     if (this.db && this.currentRoomId) {
       try {
-        const mySlotRef = ref(this.db, `rooms/${this.currentRoomId}/${this.mySlot}`);
-        await remove(mySlotRef);
+        if (this.mySlot === 'p1') {
+          await remove(ref(this.db, `rooms/${this.currentRoomId}`));
+        } else {
+          await remove(ref(this.db, `rooms/${this.currentRoomId}/${this.mySlot}`));
+        }
       } catch {}
     }
     this.currentRoomId = null;

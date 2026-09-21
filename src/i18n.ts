@@ -158,6 +158,63 @@ export const translations = {
   restartBtn: {
     ja: 'TRY AGAIN 🔄',
     en: 'TRY AGAIN 🔄'
+  },
+  // Multiplayer Modal
+  multiModalTitle: {
+    ja: '2人同時プレイ',
+    en: '2 PLAYERS'
+  },
+  multiSubText: {
+    ja: 'モードを選択して参加してください',
+    en: 'Select mode and join the game'
+  },
+  modeVersusName: {
+    ja: '対戦モード',
+    en: 'Versus Mode'
+  },
+  modeVersusDesc: {
+    ja: '左右2画面・スコア＆お邪魔競争',
+    en: 'Dual screen • Score & attacks'
+  },
+  modeCoopName: {
+    ja: '協力モード',
+    en: 'Co-op Mode'
+  },
+  modeCoopDesc: {
+    ja: '1画面2連装砲台・共同クリア',
+    en: 'Shared screen • Dual cannons'
+  },
+  playerNameLabel: {
+    ja: 'プレイヤー名:',
+    en: 'Player Name:'
+  },
+  roomCodeLabel: {
+    ja: 'ROOM CODE (ルームコード):',
+    en: 'ROOM CODE:'
+  },
+  refreshCodeBtn: {
+    ja: '🎲 再生成',
+    en: '🎲 New'
+  },
+  startMultiBtn: {
+    ja: '🎮 参加する',
+    en: '🎮 Join Game'
+  },
+  local2pBtn: {
+    ja: '🖥️ 1台のPCで2人プレイ (オフライン対戦/協力)',
+    en: '🖥️ 2 Players on 1 PC (Offline Local)'
+  },
+  waitingText: {
+    ja: '対戦相手の参加を待っています...',
+    en: 'Waiting for opponent to join...'
+  },
+  waitingCopyBtn: {
+    ja: '📋 招待リンクをコピー',
+    en: '📋 Copy Invite Link'
+  },
+  cancelRoomBtn: {
+    ja: '✕ キャンセル',
+    en: '✕ Cancel'
   }
 };
 
@@ -222,4 +279,47 @@ export function applyStaticTranslations(lang: Language = currentLang): void {
 
   const restartBtn = document.getElementById('restart-btn');
   if (restartBtn) restartBtn.textContent = translations.restartBtn[lang];
+
+  // Multiplayer Modal static labels
+  const multiModalH2 = document.querySelector('#multiplayer-modal h2');
+  if (multiModalH2) multiModalH2.textContent = translations.multiModalTitle[lang];
+
+  const multiSub = document.getElementById('multi-sub-text');
+  if (multiSub) multiSub.textContent = translations.multiSubText[lang];
+
+  const vsName = document.querySelector('#mode-tab-versus .mode-name');
+  if (vsName) vsName.textContent = translations.modeVersusName[lang];
+
+  const vsDesc = document.querySelector('#mode-tab-versus .mode-desc');
+  if (vsDesc) vsDesc.textContent = translations.modeVersusDesc[lang];
+
+  const coopName = document.querySelector('#mode-tab-coop .mode-name');
+  if (coopName) coopName.textContent = translations.modeCoopName[lang];
+
+  const coopDesc = document.querySelector('#mode-tab-coop .mode-desc');
+  if (coopDesc) coopDesc.textContent = translations.modeCoopDesc[lang];
+
+  const pNameLabel = document.querySelector('label[for="player-name-input"]');
+  if (pNameLabel) pNameLabel.textContent = translations.playerNameLabel[lang];
+
+  const rCodeLabel = document.querySelector('label[for="room-code-input"]');
+  if (rCodeLabel) rCodeLabel.textContent = translations.roomCodeLabel[lang];
+
+  const refreshBtn = document.getElementById('refresh-room-code-btn');
+  if (refreshBtn) refreshBtn.textContent = translations.refreshCodeBtn[lang];
+
+  const startMultiBtn = document.getElementById('start-multi-btn');
+  if (startMultiBtn) startMultiBtn.textContent = translations.startMultiBtn[lang];
+
+  const local2pBtn = document.getElementById('local-2p-btn');
+  if (local2pBtn) local2pBtn.textContent = translations.local2pBtn[lang];
+
+  const waitingText = document.querySelector('.waiting-text');
+  if (waitingText) waitingText.textContent = translations.waitingText[lang];
+
+  const copyUrlBtn = document.getElementById('waiting-copy-url-btn');
+  if (copyUrlBtn) copyUrlBtn.textContent = translations.waitingCopyBtn[lang];
+
+  const cancelRoomBtn = document.getElementById('cancel-room-btn');
+  if (cancelRoomBtn) cancelRoomBtn.textContent = translations.cancelRoomBtn[lang];
 }

@@ -1,11 +1,12 @@
 import { soundManager } from './audio';
 import { applyStaticTranslations, currentLang, translations } from './i18n';
 import { PlayMode } from './types';
-import { saveCustomFirebaseConfig } from './firebase';
+import { networkManager } from './network';
 
 export interface UICallbacks {
   onStartGame: () => void;
   onStartMultiplayer: (mode: PlayMode, isHost: boolean, roomId?: string, playerName?: string, isLocal?: boolean) => void;
+  onCancelWaiting?: () => void;
   onNextStage: () => void;
   onRestartGame: () => void;
   onAimChange: (angleDelta: number) => void;
@@ -73,15 +74,30 @@ export class UIManager {
 
   private selectedMode: PlayMode = 'VERSUS';
 
+  public setMode(mode: PlayMode): void {
+    this.selectedMode = mode;
+    const tabVersus = document.getElementById('mode-tab-versus');
+    const tabCoop = document.getElementById('mode-tab-coop');
+    if (mode === 'COOP') {
+      tabCoop?.classList.add('active');
+      tabVersus?.classList.remove('active');
+    } else {
+      tabVersus?.classList.add('active');
+      tabCoop?.classList.remove('active');
+    }
+  }
+
   private checkUrlRoomCode(): void {
     try {
       const params = new URLSearchParams(window.location.search);
       const room = params.get('room');
+      const mode = params.get('mode') as PlayMode;
       if (room) {
         this.titleModal.classList.add('hidden');
-        this.showMultiplayerModal();
-        const input = document.getElementById('join-room-input') as HTMLInputElement;
-        if (input) input.value = room.toUpperCase();
+        if (mode === 'COOP' || mode === 'VERSUS') {
+          this.setMode(mode);
+        }
+        this.showMultiplayerModal(room.toUpperCase(), true);
       }
     } catch {}
   }
@@ -99,6 +115,7 @@ export class UIManager {
     });
 
     document.getElementById('close-multi-modal-btn')?.addEventListener('click', () => {
+      this.callbacks.onCancelWaiting?.();
       this.hideMultiplayerModal();
       this.titleModal.classList.remove('hidden');
     });
@@ -107,30 +124,33 @@ export class UIManager {
     const tabVersus = document.getElementById('mode-tab-versus');
     const tabCoop = document.getElementById('mode-tab-coop');
     tabVersus?.addEventListener('click', () => {
-      this.selectedMode = 'VERSUS';
-      tabVersus.classList.add('active');
-      tabCoop?.classList.remove('active');
+      this.setMode('VERSUS');
     });
     tabCoop?.addEventListener('click', () => {
-      this.selectedMode = 'COOP';
-      tabCoop.classList.add('active');
-      tabVersus?.classList.remove('active');
+      this.setMode('COOP');
     });
 
-    // Create room
-    document.getElementById('create-room-btn')?.addEventListener('click', () => {
-      const name = (document.getElementById('player-name-input') as HTMLInputElement)?.value.trim() || 'Player 1';
-      this.callbacks.onStartMultiplayer(this.selectedMode, true, undefined, name, false);
+    // Refresh Room Code
+    document.getElementById('refresh-room-code-btn')?.addEventListener('click', () => {
+      const codeInput = document.getElementById('room-code-input') as HTMLInputElement;
+      if (codeInput) {
+        codeInput.value = networkManager.generateRoomCode();
+      }
     });
 
-    // Join room
-    document.getElementById('join-room-btn')?.addEventListener('click', () => {
-      const code = (document.getElementById('join-room-input') as HTMLInputElement)?.value.trim().toUpperCase();
+    // Start / Join Multiplayer
+    document.getElementById('start-multi-btn')?.addEventListener('click', () => {
+      const nameInput = document.getElementById('player-name-input') as HTMLInputElement;
+      const codeInput = document.getElementById('room-code-input') as HTMLInputElement;
+      const name = nameInput?.value.trim() || 'Player 1';
+      const code = codeInput?.value.trim().toUpperCase();
       if (!code) {
         alert('ルームコードを入力してください。');
         return;
       }
-      const name = (document.getElementById('player-name-input') as HTMLInputElement)?.value.trim() || 'Player 2';
+      try {
+        localStorage.setItem('bubblin_player_name', name);
+      } catch {}
       this.callbacks.onStartMultiplayer(this.selectedMode, false, code, name, false);
     });
 
@@ -141,36 +161,11 @@ export class UIManager {
 
     // Cancel room
     document.getElementById('cancel-room-btn')?.addEventListener('click', () => {
+      this.callbacks.onCancelWaiting?.();
       this.hideWaitingPanel();
-    });
-
-    // Firebase Settings toggle & save
-    const fbPanel = document.getElementById('firebase-settings-panel');
-    const multiActionPanel = document.getElementById('multi-action-panel');
-    document.getElementById('toggle-firebase-settings-btn')?.addEventListener('click', () => {
-      fbPanel?.classList.toggle('hidden');
-      multiActionPanel?.classList.toggle('hidden');
-    });
-    document.getElementById('close-firebase-settings-btn')?.addEventListener('click', () => {
-      fbPanel?.classList.add('hidden');
-      multiActionPanel?.classList.remove('hidden');
-    });
-    document.getElementById('save-firebase-config-btn')?.addEventListener('click', () => {
-      const text = (document.getElementById('firebase-config-textarea') as HTMLTextAreaElement)?.value.trim();
-      if (text) {
-        try {
-          const config = JSON.parse(text);
-          if (config && config.databaseURL) {
-            saveCustomFirebaseConfig(config);
-            alert('Firebase設定を保存しました！');
-            fbPanel?.classList.add('hidden');
-            multiActionPanel?.classList.remove('hidden');
-          } else {
-            alert('有効な Firebase 設定（databaseURLを含む）を入力してください。');
-          }
-        } catch {
-          alert('JSONのパースに失敗しました。形式を確認してください。');
-        }
+      const codeInput = document.getElementById('room-code-input') as HTMLInputElement;
+      if (codeInput) {
+        codeInput.value = networkManager.generateRoomCode();
       }
     });
 
@@ -212,9 +207,38 @@ export class UIManager {
     this.setupLeverControl();
   }
 
-  public showMultiplayerModal(): void {
+  public showMultiplayerModal(initialRoomCode?: string, isGuest: boolean = false): void {
     const modal = document.getElementById('multiplayer-modal');
     if (modal) modal.classList.remove('hidden');
+
+    const noticeBox = document.getElementById('invite-notice-box');
+    const nameInput = document.getElementById('player-name-input') as HTMLInputElement;
+    const codeInput = document.getElementById('room-code-input') as HTMLInputElement;
+    const startBtn = document.getElementById('start-multi-btn');
+    const subText = document.getElementById('multi-sub-text');
+
+    const savedName = localStorage.getItem('bubblin_player_name');
+
+    if (isGuest && initialRoomCode) {
+      if (noticeBox) noticeBox.classList.remove('hidden');
+      const noticeText = document.getElementById('invite-notice-text');
+      if (noticeText) {
+        noticeText.textContent = `ルーム [${initialRoomCode}] に招待されました！プレイヤー名を設定して参加してください。`;
+      }
+      if (subText) subText.textContent = `ルーム [${initialRoomCode}] に参加します`;
+      if (nameInput) nameInput.value = savedName || 'Player 2';
+      if (codeInput) codeInput.value = initialRoomCode;
+      if (startBtn) startBtn.innerHTML = '🎮 参加する (ゲーム開始)';
+    } else {
+      if (noticeBox) noticeBox.classList.add('hidden');
+      if (subText) subText.textContent = 'モードを選択して参加してください';
+      if (nameInput) nameInput.value = savedName || 'Player 1';
+      const code = initialRoomCode || networkManager.generateRoomCode();
+      if (codeInput) codeInput.value = code;
+      if (startBtn) startBtn.innerHTML = '🎮 参加する';
+    }
+
+    this.hideWaitingPanel();
   }
 
   public hideMultiplayerModal(): void {
@@ -234,14 +258,20 @@ export class UIManager {
     const copyBtn = document.getElementById('waiting-copy-url-btn');
     if (copyBtn) {
       copyBtn.onclick = () => {
-        const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
-        navigator.clipboard.writeText(url).then(() => {
-          const orig = copyBtn.textContent;
-          copyBtn.textContent = 'コピーしました！ ✅';
-          setTimeout(() => {
-            copyBtn.textContent = orig;
-          }, 2000);
-        });
+        const url = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(this.selectedMode)}`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(() => {
+            const orig = copyBtn.innerHTML;
+            copyBtn.innerHTML = 'コピーしました！ ✅';
+            setTimeout(() => {
+              copyBtn.innerHTML = orig;
+            }, 2000);
+          }).catch(() => {
+            prompt('招待URLをコピーしてください:', url);
+          });
+        } else {
+          prompt('招待URLをコピーしてください:', url);
+        }
       };
     }
   }
