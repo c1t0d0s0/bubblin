@@ -1,6 +1,7 @@
 import {
   Database,
   get,
+  increment,
   onChildAdded,
   onDisconnect,
   onValue,
@@ -289,6 +290,7 @@ export class NetworkManager {
       fields[`${slot}/ceilingY`] = 0;
       fields[`${slot}/shotsBeforeDrop`] = getStage(stageId).shotsBeforeDrop;
       fields[`${slot}/projectile`] = null;
+      fields[`${slot}/attackPending`] = 0;
       fields[`${slot}/grid`] = grid;
     }
     return fields;
@@ -473,7 +475,8 @@ export class NetworkManager {
       if (myState && myState.attackPending > 0 && this.attackCallback) {
         const count = myState.attackPending;
         // Reset attack pending on my state
-        update(ref(this.db!, `rooms/${roomId}/${this.mySlot}`), { attackPending: 0 });
+        // Subtract only what was read, so attacks arriving meanwhile are not lost
+        update(ref(this.db!, `rooms/${roomId}/${this.mySlot}`), { attackPending: increment(-count) });
         this.attackCallback(count);
       }
     });
@@ -529,9 +532,8 @@ export class NetworkManager {
 
     const snapshot = await get(oppRef);
     if (snapshot.exists()) {
-      const opp = snapshot.val() as PlayerNetworkState;
-      const currentPending = opp.attackPending || 0;
-      await update(oppRef, { attackPending: currentPending + count });
+      // Atomic add: two attacks at the same time must not overwrite each other
+      await update(oppRef, { attackPending: increment(count) });
       this.sendSystemChatMessage(`${this.myPlayerName} が ${count}個のお邪魔バブルを送り込みました！🔥`);
     }
   }

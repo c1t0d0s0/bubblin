@@ -20,7 +20,9 @@ import {
 import {
   countOccupiedBubbles,
   createEmptyGrid,
+  getColsInRow,
   getHexPosition,
+  getNeighbors,
   getOccupiedColors,
   isDeadlineCrossed
 } from './grid';
@@ -1477,6 +1479,17 @@ class BubblinGame {
         if (this.playMode === 'VERSUS') {
           const attackCount = Math.max(1, Math.floor(floating.length / 2));
           networkManager.sendAttack(attackCount);
+          this.scorePopups.push({
+            x: CANVAS_WIDTH / 2,
+            y: snapPos.y - 30,
+            text: `⚔️ ATTACK x${attackCount}!`,
+            color: '#ff8a3d',
+            alpha: 1,
+            scale: 1.2,
+            life: 0,
+            fontSize: 22,
+            isBanner: true
+          });
         }
 
         // Spawn multiple expanding shockwave rings from severance point
@@ -1636,7 +1649,12 @@ class BubblinGame {
     );
   }
 
+  /**
+   * VERSUS: the opponent's attack turns into `count` obstacle bubbles stuck onto my board.
+   */
   private handleIncomingAttack(count: number): void {
+    if (this.state !== 'PLAYING') return;
+
     soundManager.playWarning();
     this.renderer.triggerShake(8);
     this.scorePopups.push({
@@ -1651,10 +1669,46 @@ class BubblinGame {
       isBanner: true
     });
 
-    this.shotsBeforeDrop = Math.max(1, this.shotsBeforeDrop - count);
-    if (this.shotsBeforeDrop <= 1) {
-      this.warningTime = 40;
+    const added = this.addJunkBubbles(count);
+    if (added > 0) {
+      networkManager.syncPlayerState({ grid: serializeGrid(this.grid) }, true);
     }
+
+    if (isDeadlineCrossed(this.grid, this.ceilingY, DEADLINE_Y)) {
+      this.gameOver();
+    }
+  }
+
+  /**
+   * Sticks up to `count` random-colored bubbles onto free cells that touch the ceiling or an existing bubble
+   * (so they never float and drop by themselves). Returns how many were placed.
+   */
+  private addJunkBubbles(count: number): number {
+    let placed = 0;
+    for (let i = 0; i < count; i++) {
+      const candidates: { row: number; col: number }[] = [];
+      for (let r = 0; r < this.grid.length; r++) {
+        for (let c = 0; c < getColsInRow(r); c++) {
+          if (this.grid[r][c].color) continue;
+          const attached =
+            r === 0 || getNeighbors(r, c).some((n) => this.grid[n.row]?.[n.col]?.color);
+          if (attached) candidates.push({ row: r, col: c });
+        }
+      }
+      if (candidates.length === 0) break;
+
+      const cell = candidates[Math.floor(Math.random() * candidates.length)];
+      const colors = getOccupiedColors(this.grid);
+      const pool = colors.length > 0 ? colors : this.currentStageData.colors;
+      const color = pool[Math.floor(Math.random() * pool.length)];
+      this.grid[cell.row][cell.col].color = color;
+
+      const pos = getHexPosition(cell.row, cell.col, this.ceilingY);
+      this.triggerPopParticles(pos.x, pos.y, color);
+      placed++;
+    }
+    if (placed > 0) soundManager.playSnap();
+    return placed;
   }
 
   private gameOver(): void {
