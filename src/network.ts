@@ -11,13 +11,13 @@ import {
   update
 } from 'firebase/database';
 import { initFirebase } from './firebase';
-import { BubbleColor, ChatMessage, PlayerNetworkState, PlayerSlot, PlayMode, RoomData, RoomStatus } from './types';
+import { BubbleColor, ChatMessage, PlayerNetworkState, PlayerSlot, PlayMode, RoomData, RoomStatus, VersusMatch } from './types';
 import { getStage } from './stages';
-import { MAX_ROWS } from './constants';
+import { MAX_ROWS, VERSUS_STAGE_IDS, VERSUS_WINS_NEEDED, getVersusStageId } from './constants';
 import { getColsInRow } from './grid';
 
-function getInitialStageGrid(): (BubbleColor | '')[][] {
-  const stage = getStage(1);
+function getInitialStageGrid(stageId: number = 1): (BubbleColor | '')[][] {
+  const stage = getStage(stageId);
   const grid: (BubbleColor | '')[][] = [];
   for (let r = 0; r < MAX_ROWS; r++) {
     const cols = getColsInRow(r);
@@ -49,6 +49,10 @@ export class NetworkManager {
   private opponentLeftCallback?: (name: string) => void;
   private spectateCallback?: (room: RoomData) => void;
   private spectateEndCallback?: () => void;
+  private versusCallback?: (v: VersusMatch) => void;
+
+  private lastRoom: RoomData | null = null;
+  private recordedGame: number = 0; // host: last game whose result was written
 
   private currentRound: number = 1;
 
@@ -167,15 +171,19 @@ export class NetworkManager {
       lastActive: Date.now()
     };
 
+    this.recordedGame = 0;
     const roomData: RoomData = {
       id: roomId,
       mode,
       status: 'WAITING',
       hostId: this.myPlayerId,
-      stageId,
+      stageId: mode === 'VERSUS' ? getVersusStageId(1) : stageId,
       createdAt: Date.now(),
       p1: initialPlayerState
     };
+    if (mode === 'VERSUS') {
+      roomData.versus = { game: 1, p1Wins: 0, p2Wins: 0, resultGame: 0 };
+    }
 
     const roomRef = ref(this.db, `rooms/${roomId}`);
     await set(roomRef, roomData);
@@ -268,6 +276,76 @@ export class NetworkManager {
     }
   }
 
+  /** Reset fields for both players at the start of a new game on `stageId`. */
+  private playerResetFields(stageId: number): Record<string, unknown> {
+    const grid = getInitialStageGrid(stageId);
+    const fields: Record<string, unknown> = {};
+    for (const slot of ['p1', 'p2']) {
+      fields[`${slot}/isDead`] = false;
+      fields[`${slot}/isCleared`] = false;
+      fields[`${slot}/ready`] = true;
+      fields[`${slot}/score`] = 0;
+      fields[`${slot}/combo`] = 0;
+      fields[`${slot}/ceilingY`] = 0;
+      fields[`${slot}/shotsBeforeDrop`] = getStage(stageId).shotsBeforeDrop;
+      fields[`${slot}/projectile`] = null;
+      fields[`${slot}/grid`] = grid;
+    }
+    return fields;
+  }
+
+  /**
+   * VERSUS (host only): records the winner of the current game. Best of 3: first to VERSUS_WINS_NEEDED wins.
+   */
+  public async recordVersusResult(winner: PlayerSlot): Promise<void> {
+    if (!this.db || !this.currentRoomId || this.isSpectatorMode || this.mySlot !== 'p1') return;
+    const v = this.lastRoom?.versus ?? { game: 1, p1Wins: 0, p2Wins: 0, resultGame: 0 };
+    if (this.recordedGame === v.game || v.resultGame >= v.game) return; // already recorded
+    this.recordedGame = v.game;
+
+    const next: VersusMatch = {
+      game: v.game,
+      p1Wins: v.p1Wins + (winner === 'p1' ? 1 : 0),
+      p2Wins: v.p2Wins + (winner === 'p2' ? 1 : 0),
+      resultGame: v.game,
+      winner
+    };
+    if (next.p1Wins >= VERSUS_WINS_NEEDED) next.matchWinner = 'p1';
+    else if (next.p2Wins >= VERSUS_WINS_NEEDED) next.matchWinner = 'p2';
+
+    try {
+      await set(ref(this.db, `rooms/${this.currentRoomId}/versus`), next);
+    } catch (err) {
+      console.warn('[Network] Failed to record versus result:', err);
+      this.recordedGame = 0;
+    }
+  }
+
+  /**
+   * VERSUS (host only): starts the next game of the match with a fresh board for both players.
+   */
+  public async advanceVersusGame(): Promise<void> {
+    if (!this.db || !this.currentRoomId || this.isSpectatorMode || this.mySlot !== 'p1') return;
+    const room = this.lastRoom;
+    const v = room?.versus;
+    if (!room || !v || v.matchWinner || v.resultGame !== v.game) return;
+
+    const game = Math.min(v.game + 1, VERSUS_STAGE_IDS.length);
+    const stageId = getVersusStageId(game);
+    try {
+      await update(ref(this.db, `rooms/${this.currentRoomId}`), {
+        round: (room.round || 1) + 1,
+        stageId,
+        status: 'PLAYING',
+        rematch: null,
+        'versus/game': v.game + 1,
+        ...this.playerResetFields(stageId)
+      });
+    } catch (err) {
+      console.warn('[Network] Failed to advance versus game:', err);
+    }
+  }
+
   /**
    * Joins a room as a spectator (3rd player onwards, or when the game is already running).
    * Spectators only read the room state and can chat.
@@ -331,45 +409,42 @@ export class NetworkManager {
         this.roomStatusCallback(room.status, room.mode, room.stageId);
       }
 
+      this.lastRoom = room;
+
       // Spectators only watch: hand the whole room to the game and skip the player-only logic below
       if (this.isSpectatorMode) {
+        this.spectateCallback?.(room);
+        if (room.versus) this.versusCallback?.(room.versus);
         const roomRound = room.round || 1;
         if (roomRound > this.currentRound) {
           this.currentRound = roomRound;
           this.rematchCallback?.();
         }
-        this.spectateCallback?.(room);
         return;
       }
 
-      // Check rematch state
+      // Match progress first, so the game knows the current game number before a new round starts
+      if (room.versus) this.versusCallback?.(room.versus);
+
+      // Check rematch state (both players want a new match)
       if (room.rematch && room.rematch.p1 && room.rematch.p2) {
         if (this.mySlot === 'p1') {
-          const initialGrid = getInitialStageGrid();
           const nextRound = (room.round || 1) + 1;
-          update(ref(this.db!, `rooms/${roomId}`), {
+          this.recordedGame = 0;
+          const firstStage = room.mode === 'VERSUS' ? getVersusStageId(1) : 1;
+          const reset: Record<string, unknown> = {
             round: nextRound,
             rematch: null,
             status: 'PLAYING',
-            'p1/isDead': false,
-            'p1/isCleared': false,
-            'p1/ready': true,
-            'p1/score': 0,
-            'p1/combo': 0,
-            'p1/ceilingY': 0,
-            'p1/shotsBeforeDrop': 8,
-            'p1/projectile': null,
-            'p1/grid': initialGrid,
-            'p2/isDead': false,
-            'p2/isCleared': false,
-            'p2/ready': true,
-            'p2/score': 0,
-            'p2/combo': 0,
-            'p2/ceilingY': 0,
-            'p2/shotsBeforeDrop': 8,
-            'p2/projectile': null,
-            'p2/grid': initialGrid
-          }).catch((err) => console.warn('[Network] Rematch reset error:', err));
+            stageId: firstStage,
+            ...this.playerResetFields(firstStage)
+          };
+          if (room.mode === 'VERSUS') {
+            reset.versus = { game: 1, p1Wins: 0, p2Wins: 0, resultGame: 0 };
+          }
+          update(ref(this.db!, `rooms/${roomId}`), reset).catch((err) =>
+            console.warn('[Network] Rematch reset error:', err)
+          );
         }
       }
 
@@ -537,6 +612,10 @@ export class NetworkManager {
 
   public onSpectate(callback: (room: RoomData) => void): void {
     this.spectateCallback = callback;
+  }
+
+  public onVersus(callback: (v: VersusMatch) => void): void {
+    this.versusCallback = callback;
   }
 
   public onSpectateEnd(callback: () => void): void {

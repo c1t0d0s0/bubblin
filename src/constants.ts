@@ -21,6 +21,15 @@ export const BARREL_LENGTH = 40;
 export const DEADLINE_Y = 600;
 
 export const PROJECTILE_SPEED = 18;
+// VERSUS: best-of-3 on hard (MASTER bracket) stages, first to 2 wins takes the match
+export const VERSUS_STAGE_IDS = [26, 28, 30];
+export const VERSUS_WINS_NEEDED = 2;
+
+export function getVersusStageId(game: number): number {
+  const i = Math.min(Math.max(game, 1), VERSUS_STAGE_IDS.length) - 1;
+  return VERSUS_STAGE_IDS[i];
+}
+
 export const MIN_AIM_ANGLE = -Math.PI * 0.42; // ~ -75 degrees
 export const MAX_AIM_ANGLE = Math.PI * 0.42;  // ~ +75 degrees
 

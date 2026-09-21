@@ -322,7 +322,7 @@ export class UIManager {
     if (rivalBadge && rivalBadge.textContent !== right) rivalBadge.textContent = right;
   }
 
-  public showSpectatorResult(title: string, sub: string): void {
+  public showSpectatorResult(title: string, sub: string, note: string = '対戦が終了しました。再戦が始まると自動で観戦を続けます。'): void {
     this.isVersusResult = false;
     const titleEl = document.getElementById('game-over-title');
     const scoreEl = document.getElementById('game-over-score-val');
@@ -336,18 +336,29 @@ export class UIManager {
       titleEl.style.color = '#ffd000';
     }
     if (iconEl) iconEl.textContent = '👀';
-    if (subEl) subEl.textContent = '対戦が終了しました。再戦が始まると自動で観戦を続けます。';
+    if (subEl) subEl.textContent = note;
     if (scoreEl) scoreEl.textContent = sub;
     if (restartBtn) {
-      restartBtn.textContent = '⏳ 再戦を待っています...';
+      restartBtn.textContent = '⏳ 次の開始を待っています...';
       restartBtn.disabled = true;
     }
     if (leaveBtn) leaveBtn.classList.remove('hidden');
     this.gameOverModal.classList.remove('hidden');
   }
 
-  public showVersusResult(isWinner: boolean, myScore: number, rivalScore: number): void {
-    this.isVersusResult = true;
+  /** VERSUS result after each game of the best-of-3 (and the final match result). */
+  public showVersusResult(info: {
+    game: number;
+    won: boolean;
+    myWins: number;
+    rivalWins: number;
+    myScore: number;
+    rivalScore: number;
+    matchOver: boolean;
+  }): void {
+    const { game, won, myWins, rivalWins, myScore, rivalScore, matchOver } = info;
+    // Only the final result offers a rematch; between games the next one starts automatically
+    this.isVersusResult = matchOver;
     const titleEl = document.getElementById('game-over-title');
     const scoreEl = document.getElementById('game-over-score-val');
     const subEl = document.getElementById('game-over-sub-text');
@@ -355,35 +366,45 @@ export class UIManager {
     const restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
     const leaveBtn = document.getElementById('leave-game-btn');
 
-    if (isWinner) {
-      if (titleEl) {
-        titleEl.textContent = 'YOU WIN! 🏆';
-        titleEl.style.color = '#ffd000';
+    if (titleEl) {
+      if (matchOver) {
+        titleEl.textContent = won ? 'MATCH WIN! 🏆' : 'MATCH LOSE... 💀';
+      } else {
+        titleEl.textContent = won ? `GAME ${game} WIN! 🏆` : `GAME ${game} LOSE... 💀`;
       }
-      if (iconEl) iconEl.textContent = '👑';
-      if (subEl) subEl.textContent = '対戦に勝利しました！おめでとうございます！';
-    } else {
-      if (titleEl) {
-        titleEl.textContent = 'YOU LOSE... 💀';
-        titleEl.style.color = '#ff2d55';
-      }
-      if (iconEl) iconEl.textContent = '💀';
-      if (subEl) subEl.textContent = '相手に先を越されてしまいました！';
+      titleEl.style.color = won ? '#ffd000' : '#ff2d55';
     }
-
+    if (iconEl) iconEl.textContent = won ? '👑' : '💀';
+    if (subEl) {
+      if (matchOver) {
+        subEl.textContent = won ? '3本勝負に勝利しました！おめでとうございます！' : '3本勝負に敗れました…';
+      } else {
+        subEl.textContent = won ? 'このゲームを取りました！' : 'このゲームは相手に取られました！';
+      }
+    }
     if (scoreEl) {
-      scoreEl.innerHTML = `YOUR SCORE: <strong>${myScore.toLocaleString()}</strong><br>RIVAL SCORE: <strong>${rivalScore.toLocaleString()}</strong>`;
+      scoreEl.innerHTML =
+        `<strong>${myWins} - ${rivalWins}</strong> (3本勝負・先に2勝)<br>` +
+        `YOUR SCORE: <strong>${myScore.toLocaleString()}</strong><br>RIVAL SCORE: <strong>${rivalScore.toLocaleString()}</strong>`;
     }
 
     if (restartBtn) {
-      restartBtn.textContent = '再戦する (REMATCH) 🔄';
-      restartBtn.disabled = false;
+      restartBtn.textContent = matchOver ? '再戦する (REMATCH) 🔄' : '⏳ 次のゲームを準備中...';
+      restartBtn.disabled = !matchOver;
     }
     if (leaveBtn) {
       leaveBtn.classList.remove('hidden');
     }
 
     this.gameOverModal.classList.remove('hidden');
+  }
+
+  /** Shows the players' win counts on the two screen badges. */
+  public setPlayerBadges(myWins: number, rivalWins: number): void {
+    const localBadge = document.getElementById('local-player-badge');
+    const rivalBadge = document.getElementById('opponent-player-badge');
+    if (localBadge) localBadge.textContent = `YOU (P1)  🏆${myWins}`;
+    if (rivalBadge) rivalBadge.textContent = `RIVAL (P2)  🏆${rivalWins}`;
   }
 
   public updateHUD(

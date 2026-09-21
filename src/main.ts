@@ -10,6 +10,8 @@ import {
   LAUNCHER_COOP_P2_X,
   LAUNCHER_X,
   LAUNCHER_Y,
+  VERSUS_STAGE_IDS,
+  getVersusStageId,
   MAX_AIM_ANGLE,
   MIN_AIM_ANGLE,
   PROJECTILE_SPEED,
@@ -41,6 +43,7 @@ import {
   PlayMode,
   Projectile,
   RoomData,
+  VersusMatch,
   ScorePopup,
   StageData
 } from './types';
@@ -124,6 +127,11 @@ class BubblinGame {
   private guestInputSeen: boolean = false; // host: first guest state received after (re)start
   private lastGuestShootSeq: number = 0;
   private lastGuestSwapSeq: number = 0;
+  // VERSUS best-of-3 (progress is written to the room by the host)
+  private versus: VersusMatch = { game: 1, p1Wins: 0, p2Wins: 0, resultGame: 0 };
+  private versusResultShown: number = 0; // game number whose result screen was shown
+  private versusAdvanceScheduled: number = 0; // host: game number the next-game timer was set for
+
   // Spectator mode (3rd player onwards)
   private specLeft: RemoteBoard = createRemoteBoard(); // VERSUS: P1 (drawn on the main canvas)
   private specRight: RemoteBoard = createRemoteBoard(); // VERSUS: P2 (drawn on the opponent canvas)
@@ -500,6 +508,89 @@ class BubblinGame {
   }
 
 
+  // ===== VERSUS best-of-3 =====
+
+  private isVersusHost(): boolean {
+    return this.playMode === 'VERSUS' && !this.isSpectating() && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p1';
+  }
+
+  /** Local (offline) VERSUS has no host to record results: show a single-game result directly. */
+  private showLocalVersusResult(won: boolean): void {
+    if (networkManager.getRoomId()) return;
+    this.ui.showVersusResult({
+      game: 1,
+      won,
+      myWins: won ? 1 : 0,
+      rivalWins: won ? 0 : 1,
+      myScore: this.score,
+      rivalScore: this.opponentState?.score || 0,
+      matchOver: true
+    });
+  }
+
+  /** Called with the room's match progress on every room update (players and spectators). */
+  private handleVersusUpdate(v: VersusMatch): void {
+    this.versus = v;
+    if (v.resultGame === 0) {
+      // A fresh match
+      this.versusResultShown = 0;
+      this.versusAdvanceScheduled = 0;
+    }
+
+    const spectating = this.isSpectating();
+    const mySlot = networkManager.getMySlot();
+    const myWins = mySlot === 'p1' ? v.p1Wins : v.p2Wins;
+    const rivalWins = mySlot === 'p1' ? v.p2Wins : v.p1Wins;
+    if (!spectating && this.playMode === 'VERSUS') this.ui.setPlayerBadges(myWins, rivalWins);
+
+    if (v.resultGame === 0 || v.resultGame !== v.game || this.versusResultShown === v.game) return;
+    this.versusResultShown = v.game;
+    const matchOver = !!v.matchWinner;
+
+    if (spectating) {
+      this.state = 'GAME_OVER';
+      soundManager.playStageClear();
+      const p1 = this.specLeft.state;
+      const p2 = this.specRight.state;
+      const winnerName = (v.winner === 'p1' ? p1?.name : p2?.name) || '';
+      this.ui.showSpectatorResult(
+        matchOver
+          ? `MATCH: ${v.matchWinner === 'p1' ? 'P1' : 'P2'} ${v.matchWinner === 'p1' ? p1?.name || '' : p2?.name || ''} の勝利！ 🏆`
+          : `GAME ${v.game}: ${v.winner === 'p1' ? 'P1' : 'P2'} ${winnerName} の勝利！`,
+        `${v.p1Wins} - ${v.p2Wins}  (P1 ${p1?.name || ''}: ${(p1?.score || 0).toLocaleString()} / P2 ${p2?.name || ''}: ${(p2?.score || 0).toLocaleString()})`,
+        matchOver ? '3本勝負が終了しました。再戦が始まると自動で観戦を続けます。' : '次のゲームがまもなく始まります。'
+      );
+      return;
+    }
+
+    const won = v.winner === mySlot;
+    if (this.state === 'PLAYING') {
+      // Result reached us before the opponent's flags did
+      this.state = won ? 'STAGE_CLEAR' : 'GAME_OVER';
+      if (won) {
+        soundManager.playStageClear();
+        this.triggerConfetti();
+      } else {
+        soundManager.playGameOver();
+      }
+    }
+    this.ui.showVersusResult({
+      game: v.game,
+      won,
+      myWins,
+      rivalWins,
+      myScore: this.score,
+      rivalScore: this.opponentState?.score || 0,
+      matchOver
+    });
+
+    // Host starts the next game after a short pause
+    if (this.isVersusHost() && !matchOver && this.versusAdvanceScheduled !== v.game) {
+      this.versusAdvanceScheduled = v.game;
+      setTimeout(() => networkManager.advanceVersusGame(), 3500);
+    }
+  }
+
   // ===== Spectator mode =====
 
   private startSpectating(mode: PlayMode, roomId: string): void {
@@ -547,24 +638,10 @@ class BubblinGame {
     const p1 = room.p1;
     const p2 = room.p2;
     this.ui.setSpectatorBadges(
-      `P1 ${p1?.name || ''}  ${(p1?.score || 0).toLocaleString()}`,
-      `P2 ${p2?.name || ''}  ${(p2?.score || 0).toLocaleString()}`
+      `P1 ${p1?.name || ''}  🏆${room.versus?.p1Wins || 0}  ${(p1?.score || 0).toLocaleString()}`,
+      `P2 ${p2?.name || ''}  🏆${room.versus?.p2Wins || 0}  ${(p2?.score || 0).toLocaleString()}`
     );
     this.ui.updateHUD(p1?.score || 0, this.highScore, 1, p1?.shotsBeforeDrop || 6, 6);
-
-    if (this.state === 'PLAYING' && p1 && p2) {
-      let winner: PlayerNetworkState | null = null;
-      if (p1.isCleared || p2.isDead) winner = p1;
-      else if (p2.isCleared || p1.isDead) winner = p2;
-      if (winner) {
-        this.state = 'GAME_OVER';
-        soundManager.playStageClear();
-        this.ui.showSpectatorResult(
-          `${winner === p1 ? 'P1' : 'P2'} ${winner.name || ''} の勝利！ 🏆`,
-          `P1 ${p1.name || ''}: ${(p1.score || 0).toLocaleString()} / P2 ${p2.name || ''}: ${(p2.score || 0).toLocaleString()}`
-        );
-      }
-    }
   }
 
   /** Copy a player's network state into a board (grid with pop effects, newly fired bubble). */
@@ -663,18 +740,21 @@ class BubblinGame {
       }
 
       if (this.state === 'PLAYING') {
+        // The result screen comes from the host's recorded result (handleVersusUpdate)
         if (state.isDead) {
           this.state = 'STAGE_CLEAR';
           soundManager.playStageClear();
           this.triggerConfetti();
-          this.ui.showVersusResult(true, this.score, state.score);
+          if (this.isVersusHost()) networkManager.recordVersusResult('p1');
         } else if (state.isCleared) {
           this.state = 'GAME_OVER';
           soundManager.playGameOver();
-          this.ui.showVersusResult(false, this.score, state.score);
+          if (this.isVersusHost()) networkManager.recordVersusResult('p2');
         }
       }
     });
+
+    networkManager.onVersus((v) => this.handleVersusUpdate(v));
 
     networkManager.onSpectate((room) => this.applySpectatorRoom(room));
 
@@ -703,7 +783,7 @@ class BubblinGame {
         this.state = 'PLAYING';
         return;
       }
-      this.ui.updateRematchStatus('✨ 再戦を開始します！', true);
+      this.ui.updateRematchStatus('✨ ゲームを開始します！', true);
       setTimeout(() => {
         this.ui.hideGameOverModal();
         this.startRematchGame();
@@ -724,6 +804,9 @@ class BubblinGame {
   ): Promise<void> {
     this.playMode = mode;
     this.isLocal2P = isLocal;
+    this.versus = { game: 1, p1Wins: 0, p2Wins: 0, resultGame: 0 };
+    this.versusResultShown = 0;
+    this.versusAdvanceScheduled = 0;
 
     if (isLocal) {
       this.ui.hideMultiplayerModal();
@@ -811,11 +894,28 @@ class BubblinGame {
     this.guestInputSeen = false;
     this.coopAppliedEpoch = -1;
     this.lastCoopApplied = 0;
-    this.loadStage(1);
+    // VERSUS: hard stage per game of the best-of-3
+    this.loadStage(this.playMode === 'VERSUS' ? getVersusStageId(this.versus.game) : 1);
     this.ui.setSpectatorMode(false);
 
     if (this.playMode === 'VERSUS') {
       this.ui.setVersusLayout(true);
+      const mySlot = networkManager.getMySlot();
+      this.ui.setPlayerBadges(
+        mySlot === 'p1' ? this.versus.p1Wins : this.versus.p2Wins,
+        mySlot === 'p1' ? this.versus.p2Wins : this.versus.p1Wins
+      );
+      this.scorePopups.push({
+        x: CANVAS_WIDTH / 2,
+        y: 300,
+        text: `GAME ${this.versus.game} / ${VERSUS_STAGE_IDS.length}`,
+        color: '#ffd000',
+        alpha: 1,
+        scale: 1.2,
+        life: 0,
+        fontSize: 30,
+        isBanner: true
+      });
       // Initialize opponent stage grid identical to my stage
       const layout = this.currentStageData.layout;
       for (let r = 0; r < layout.length; r++) {
@@ -1460,7 +1560,8 @@ class BubblinGame {
 
         if (this.playMode === 'VERSUS') {
           networkManager.syncPlayerState({ isCleared: true, score: this.score }, true);
-          this.ui.showVersusResult(true, this.score, this.opponentState?.score || 0);
+          if (this.isVersusHost()) networkManager.recordVersusResult('p1');
+          this.showLocalVersusResult(true);
           return;
         }
 
@@ -1564,7 +1665,8 @@ class BubblinGame {
 
     if (this.playMode === 'VERSUS') {
       networkManager.syncPlayerState({ isDead: true, score: this.score }, true);
-      this.ui.showVersusResult(false, this.score, this.opponentState?.score || 0);
+      if (this.isVersusHost()) networkManager.recordVersusResult('p2');
+      this.showLocalVersusResult(false);
       return;
     }
 

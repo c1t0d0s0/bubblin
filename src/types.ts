@@ -128,6 +128,16 @@ export interface PlayerNetworkState {
   swapSeq?: number; // guest (p2) only, CO-OP mode: incremented per swap request
 }
 
+/** VERSUS best-of-3 progress, written by the host (P1) only. */
+export interface VersusMatch {
+  game: number; // current game (1-based)
+  p1Wins: number;
+  p2Wins: number;
+  resultGame: number; // game number whose result is recorded (0 = none yet)
+  winner?: PlayerSlot; // winner of resultGame
+  matchWinner?: PlayerSlot; // set once someone has enough wins
+}
+
 export interface RoomData {
   id: string;
   mode: PlayMode;
@@ -142,6 +152,7 @@ export interface RoomData {
   };
   p1: PlayerNetworkState;
   p2?: PlayerNetworkState;
+  versus?: VersusMatch;
   spectators?: Record<string, { id: string; name: string; joinedAt: number }>;
 }
 
