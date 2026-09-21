@@ -109,6 +109,7 @@ class BubblinGame {
   private keyRight: boolean = false;
   private isPointerAiming: boolean = false;
   private lastSwipeX: number | null = null;
+  private uiScale: number = 1;
   private swipeStart: { x: number; y: number; time: number } | null = null;
 
   constructor() {
@@ -181,22 +182,58 @@ class BubblinGame {
   }
 
   public resizeCanvas(): void {
-    const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = CANVAS_WIDTH * dpr;
-    this.canvas.height = CANVAS_HEIGHT * dpr;
+    // Backing store follows the on-screen size (device pixels x UI scale) to stay sharp when enlarged
+    const dpr = (window.devicePixelRatio || 1) * this.uiScale;
+    const w = Math.round(CANVAS_WIDTH * dpr);
+    const h = Math.round(CANVAS_HEIGHT * dpr);
+    const sx = w / CANVAS_WIDTH;
+    const sy = h / CANVAS_HEIGHT;
+
+    this.canvas.width = w;
+    this.canvas.height = h;
     this.ctx.resetTransform?.();
-    this.ctx.scale(dpr, dpr);
+    this.ctx.scale(sx, sy);
 
     if (this.opponentCanvas && this.opponentCtx) {
-      this.opponentCanvas.width = CANVAS_WIDTH * dpr;
-      this.opponentCanvas.height = CANVAS_HEIGHT * dpr;
+      this.opponentCanvas.width = w;
+      this.opponentCanvas.height = h;
       this.opponentCtx.resetTransform?.();
-      this.opponentCtx.scale(dpr, dpr);
+      this.opponentCtx.scale(sx, sy);
     }
   }
 
+  // Desktop: scale the whole game (canvas, HUD, chat) to fit the browser window
+  private updateLayoutScale(): void {
+    const scaler = document.getElementById('game-scaler');
+    if (!scaler) return;
+
+    let scale = 1;
+    if (window.matchMedia('(min-width: 901px)').matches && scaler.offsetWidth && scaler.offsetHeight) {
+      const margin = 16;
+      scale = Math.min(
+        (window.innerWidth - margin * 2) / scaler.offsetWidth,
+        (window.innerHeight - margin * 2) / scaler.offsetHeight
+      );
+      scale = Math.max(0.3, Math.min(scale, 4));
+    }
+
+    if (Math.abs(scale - this.uiScale) < 0.001) return;
+    this.uiScale = scale;
+    document.documentElement.style.setProperty('--ui-scale', String(scale));
+    this.resizeCanvas();
+  }
+
   private setupCanvasSize(): void {
-    window.addEventListener('resize', () => this.resizeCanvas());
+    window.addEventListener('resize', () => {
+      this.updateLayoutScale();
+      this.resizeCanvas();
+    });
+    // Versus / chat panel change the natural size of the game area
+    const scaler = document.getElementById('game-scaler');
+    if (scaler && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => this.updateLayoutScale()).observe(scaler);
+    }
+    this.updateLayoutScale();
     this.resizeCanvas();
   }
 

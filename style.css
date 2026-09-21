@@ -564,12 +564,43 @@ body {
 }
 
 /* ================= PC Right-Side Text Chat Panel ================= */
-#app.multiplayer-active {
+#game-scaler {
   display: flex;
   flex-direction: row;
   justify-content: center;
   align-items: center;
   gap: 16px;
+  width: 100%;
+  height: 100%;
+}
+
+/* Desktop: fixed design size, uniformly scaled to fit the window (--ui-scale set in main.ts) */
+@media (min-width: 901px) {
+  #game-scaler {
+    flex: none;
+    width: auto;
+    height: 812px;
+    transform: scale(var(--ui-scale, 1));
+    transform-origin: center;
+  }
+
+  #game-wrapper {
+    width: 480px;
+    max-width: none;
+    height: 812px;
+    max-height: none;
+    flex: none;
+  }
+
+  #game-wrapper.versus-active {
+    width: 980px;
+    max-width: none;
+  }
+
+  .chat-panel {
+    height: 812px;
+    max-height: none;
+  }
 }
 
 .chat-panel {
@@ -1090,8 +1121,12 @@ body {
 /* ================= Mobile Tweaks ================= */
 @media (max-width: 900px) {
   #app.multiplayer-active {
-    flex-direction: column;
     overflow-y: auto;
+  }
+
+  #app.multiplayer-active #game-scaler {
+    flex-direction: column;
+    height: auto;
   }
 
   .chat-panel {
