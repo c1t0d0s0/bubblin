@@ -1,5 +1,6 @@
 import { soundManager } from './audio';
 import {
+  BARREL_LENGTH,
   BUBBLE_RADIUS,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -281,9 +282,8 @@ class BubblinGame {
     soundManager.playShoot();
 
     // Spawn projectile from launcher tip
-    const barrelLength = 48;
-    const startX = LAUNCHER_X + Math.sin(this.aimAngle) * barrelLength;
-    const startY = LAUNCHER_Y - Math.cos(this.aimAngle) * barrelLength;
+    const startX = LAUNCHER_X + Math.sin(this.aimAngle) * BARREL_LENGTH;
+    const startY = LAUNCHER_Y - Math.cos(this.aimAngle) * BARREL_LENGTH;
 
     this.projectile = {
       x: startX,
@@ -625,8 +625,8 @@ class BubblinGame {
     let trajectory = null;
     if (this.state === 'PLAYING' && !this.projectile) {
       trajectory = calculateTrajectory(
-        LAUNCHER_X + Math.sin(this.aimAngle) * 48,
-        LAUNCHER_Y - Math.cos(this.aimAngle) * 48,
+        LAUNCHER_X + Math.sin(this.aimAngle) * BARREL_LENGTH,
+        LAUNCHER_Y - Math.cos(this.aimAngle) * BARREL_LENGTH,
         this.aimAngle,
         this.grid,
         this.ceilingY

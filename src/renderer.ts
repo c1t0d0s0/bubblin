@@ -347,58 +347,79 @@ export class GameRenderer {
 
     const def = COLOR_DEFS[color];
     const r = radius;
+    const [cr, cg, cb] = def.rgb;
 
-    // 1. Soft ambient shadow
-    const shadowGrad = ctx.createRadialGradient(0, r * 0.2, r * 0.6, 0, r * 0.2, r * 1.15);
-    shadowGrad.addColorStop(0, 'rgba(0,0,0,0.35)');
-    shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = shadowGrad;
+    // 1. Soft glowing aura behind translucent bubble
+    const auraGrad = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.15);
+    auraGrad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.28)`);
+    auraGrad.addColorStop(0.75, `rgba(${cr}, ${cg}, ${cb}, 0.08)`);
+    auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = auraGrad;
     ctx.beginPath();
-    ctx.arc(0, r * 0.15, r * 1.05, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 1.15, 0, Math.PI * 2);
     ctx.fill();
 
-    // 2. 3D Spherical Radial Gradient Body
-    // Light source from top-left (-0.35r, -0.35r)
-    const lightX = -r * 0.35;
-    const lightY = -r * 0.35;
+    // 2. Translucent Glassy Bubble Body (Clear center, luminous vibrant rim)
+    // Light source from top-left (-0.32r, -0.32r)
+    const lightX = -r * 0.32;
+    const lightY = -r * 0.32;
     const sphereGrad = ctx.createRadialGradient(lightX, lightY, r * 0.05, 0, 0, r);
-    sphereGrad.addColorStop(0, '#ffffff');
-    sphereGrad.addColorStop(0.2, def.light);
-    sphereGrad.addColorStop(0.65, def.base);
-    sphereGrad.addColorStop(0.92, def.dark);
-    sphereGrad.addColorStop(1, '#110515');
+    sphereGrad.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
+    sphereGrad.addColorStop(0.18, `rgba(${cr}, ${cg}, ${cb}, 0.22)`); // clear translucent core
+    sphereGrad.addColorStop(0.55, `rgba(${cr}, ${cg}, ${cb}, 0.38)`);
+    sphereGrad.addColorStop(0.82, `rgba(${cr}, ${cg}, ${cb}, 0.74)`);
+    sphereGrad.addColorStop(0.95, `rgba(${cr}, ${cg}, ${cb}, 0.95)`); // intense edge refraction
+    sphereGrad.addColorStop(1, 'rgba(255, 255, 255, 0.85)');          // bright rim sheen
 
     ctx.fillStyle = sphereGrad;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Crisp Specular Gloss Highlight (top-left oval)
+    // 3. Delicate Luminous Outer Glass Rim
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 4. Inner Refraction Ring (creates soap-bubble double membrane depth)
+    ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.45)`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 5. Crisp Primary Specular Gloss Highlight (top-left curved ellipse)
     ctx.save();
     ctx.translate(lightX, lightY);
     ctx.rotate(-Math.PI / 4);
-    const specGrad = ctx.createRadialGradient(0, 0, 1, 0, 0, r * 0.35);
-    specGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-    specGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+    const specGrad = ctx.createRadialGradient(0, 0, 1, 0, 0, r * 0.4);
+    specGrad.addColorStop(0, 'rgba(255, 255, 255, 0.96)');
+    specGrad.addColorStop(0.45, 'rgba(255, 255, 255, 0.65)');
     specGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = specGrad;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.35, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 0.38, r * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // 4. Subtle Inner Rim bounce light (bottom-right crescent)
-    const rimGrad = ctx.createRadialGradient(r * 0.35, r * 0.35, r * 0.7, 0, 0, r);
-    rimGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-    rimGrad.addColorStop(0.85, 'rgba(255, 255, 255, 0.15)');
-    rimGrad.addColorStop(1, 'rgba(255, 255, 255, 0.35)');
-    ctx.fillStyle = rimGrad;
+    // 6. Secondary Pinpoint Sparkle (creates crystal glass sparkle)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.arc(-r * 0.12, -r * 0.48, r * 0.08, 0, Math.PI * 2);
     ctx.fill();
 
-    // 5. Accessible Pop Symbol in Center
-    this.drawSymbol(def.symbol, r * 0.42);
+    // 7. Subtle Bottom-Right Inner Bounce Reflection (crescent)
+    const bounceGrad = ctx.createRadialGradient(r * 0.32, r * 0.32, r * 0.08, r * 0.32, r * 0.32, r * 0.55);
+    bounceGrad.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+    bounceGrad.addColorStop(0.5, `rgba(${cr}, ${cg}, ${cb}, 0.35)`);
+    bounceGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = bounceGrad;
+    ctx.beginPath();
+    ctx.ellipse(r * 0.35, r * 0.35, r * 0.35, r * 0.15, -Math.PI / 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 8. Accessible Pop Symbol floating in center
+    this.drawSymbol(def.symbol, r * 0.44);
 
     ctx.restore();
   }
@@ -406,9 +427,11 @@ export class GameRenderer {
   private drawSymbol(symbol: string, size: number): void {
     const ctx = this.ctx;
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 3;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.lineWidth = 1.2;
 
     ctx.beginPath();
     switch (symbol) {
@@ -520,14 +543,14 @@ export class GameRenderer {
     ctx.rotate(aimAngle);
 
     // Barrel body
-    const barrelGrad = ctx.createLinearGradient(-18, 0, 18, 0);
+    const barrelGrad = ctx.createLinearGradient(-16, 0, 16, 0);
     barrelGrad.addColorStop(0, '#363d5c');
     barrelGrad.addColorStop(0.5, '#5d6896');
     barrelGrad.addColorStop(1, '#2b314a');
 
     ctx.fillStyle = barrelGrad;
     ctx.beginPath();
-    ctx.roundRect(-20, -56, 40, 52, [8, 8, 2, 2]);
+    ctx.roundRect(-16, -48, 32, 44, [6, 6, 2, 2]);
     ctx.fill();
     ctx.strokeStyle = '#8392cf';
     ctx.lineWidth = 2;
@@ -536,9 +559,9 @@ export class GameRenderer {
     // Barrel arrow/guide
     ctx.fillStyle = '#ffde59';
     ctx.beginPath();
-    ctx.moveTo(0, -62);
-    ctx.lineTo(8, -48);
-    ctx.lineTo(-8, -48);
+    ctx.moveTo(0, -54);
+    ctx.lineTo(7, -42);
+    ctx.lineTo(-7, -42);
     ctx.closePath();
     ctx.fill();
 
@@ -548,25 +571,25 @@ export class GameRenderer {
     ctx.restore();
 
     // 3. NEXT bubble preview on left
-    const nextX = LAUNCHER_X - 100;
-    const nextY = LAUNCHER_Y + 10;
+    const nextX = LAUNCHER_X - 96;
+    const nextY = LAUNCHER_Y + 8;
 
     ctx.fillStyle = 'rgba(20, 22, 38, 0.7)';
     ctx.beginPath();
-    ctx.arc(nextX, nextY, 34, 0, Math.PI * 2);
+    ctx.arc(nextX, nextY, 28, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = 'rgba(100, 130, 200, 0.4)';
     ctx.lineWidth = 2;
     ctx.stroke();
 
     // "NEXT" label tag
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.font = 'bold 10px system-ui, sans-serif';
     ctx.fillStyle = '#8ca0cc';
     ctx.textAlign = 'center';
-    ctx.fillText('NEXT', nextX, nextY - 24);
+    ctx.fillText('NEXT', nextX, nextY - 20);
 
     // Next bubble (slightly smaller)
-    this.drawBubble(nextX, nextY + 4, nextBubble, BUBBLE_RADIUS * 0.78, 1, 0);
+    this.drawBubble(nextX, nextY + 3, nextBubble, BUBBLE_RADIUS * 0.82, 1, 0);
 
     ctx.restore();
   }

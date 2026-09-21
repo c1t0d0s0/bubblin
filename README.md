@@ -10,9 +10,9 @@ Playable seamlessly on both desktop and mobile devices, Bubblin' features glossy
 
 ## 🌟 Key Features
 
-- **3D Glossy Bubbles**: Beautiful spherical rendering using radial gradients, specular gloss highlights, ambient occlusion shadows, and embedded accessible symbols (heart, droplet, clover, star, diamond, sun).
+- **Translucent Crystal Soap-Bubble Design**: Semi-transparent clear core, vibrant outer refraction rim, and dual specular highlights (primary curved gloss, pinpoint sparkle, and bounce reflection) delivering authentic glass/soap-bubble translucency. Embedded accessible symbols (heart, droplet, clover, star, diamond, sun) for colorblind friendliness.
 - **Reflective Trajectory Guide**: Real-time dotted raycast line showing the flight path, wall reflections (bank shots), and ghost impact target circle.
-- **Hexagonal Lattice Physics**: Accurate offset hexagonal grid snapping with robust wall-collision mechanics.
+- **High-Density Hexagonal Lattice**: 10 columns on even rows and 9 columns on odd rows (radius 24px, diameter 48px), perfectly fitting the 480px arena with robust collision and snapping mechanics.
 - **Match-3 & Combos**: BFS flood-fill matching that pops connected clusters of 3+ bubbles with pitch-climbing chime melodies.
 - **Exhilarating Mass Drop Effects**:
   - **Hit-Stop (Impact Freeze)**: Dramatic 60–120ms pause when severing large floating bubble clusters.
@@ -26,11 +26,12 @@ Playable seamlessly on both desktop and mobile devices, Bubblin' features glossy
   - Triumphant **Trumpet Brass Fanfare** on stage clear (dual detuned sawtooth brass with resonant filter bite and vibrato).
   - Sub-bass impact thud, cascading reward arpeggios, bubble pop chimes, and wall-bounce ping sounds.
   - Independent header controls for **BGM (`🎵`)** and **SE (`🔊`)** with `localStorage` persistence.
-- **30 Progressive Stages**: 4 carefully balanced difficulty brackets:
-  - **Stages 1–6 (Beginner)**: 3 colors, 7–8 shot countdowns, open bottom layouts.
-  - **Stages 7–14 (Novice)**: 4 colors, iconic silhouettes (Heart, Crown, Peaks, Invader).
-  - **Stages 15–22 (Advanced)**: 5 colors, strategic bank shots and thin root links (Butterfly, Anchor, Shield).
-  - **Stages 23–30 (Master)**: 6 colors, full rainbow spectrum (DNA Helix, Dragon Eye, Final Clash) leading to the Victory screen and Loop Mode.
+- **30 Carefully Rebalanced Stages**: 4 progressive difficulty brackets:
+  - **Stages 1–6 (Beginner)**: 3 colors, 8–9 shot countdowns, generous clusters.
+  - **Stages 7–14 (Novice)**: 4 colors (Yellow/Purple), 7–8 shot countdowns, iconic silhouettes (Heart, Crown, Peaks, Invader).
+  - **Stages 15–22 (Advanced)**: 5 colors (Orange), 6–7 shot countdowns, strategic bank shots and thin root links (Butterfly, Anchor, Temple Pillars).
+  - **Stages 23–30 (Master)**: 6 colors, 5–6 shot countdowns, full rainbow spectrum (DNA Helix, Dragon Eye, Final Clash) leading to the Victory screen and Loop Mode.
+- **Automatic Bilingual Localization**: Automatically detects browser locale (`navigator.languages` / `navigator.language`) and serves Japanese for Japanese browsers and English for all others.
 - **Dual Platform Controls**: Optimized for desktop (mouse & keyboard) and mobile (touch lever, on-screen launch button, direct screen dragging).
 
 ---
