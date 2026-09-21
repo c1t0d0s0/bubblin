@@ -13,6 +13,10 @@ export const MAX_ROWS = 16;
 
 export const LAUNCHER_X = CANVAS_WIDTH / 2; // 240
 export const LAUNCHER_Y = 660;
+export const LAUNCHER_COOP_P1_X = 160;
+export const LAUNCHER_COOP_P2_X = 320;
+export const P1_THEME_COLOR = '#00d2ff';
+export const P2_THEME_COLOR = '#ff2d55';
 export const BARREL_LENGTH = 40;
 export const DEADLINE_Y = 600;
 

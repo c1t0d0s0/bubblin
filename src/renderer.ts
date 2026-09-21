@@ -4,9 +4,13 @@ import {
   CANVAS_WIDTH,
   COLOR_DEFS,
   DEADLINE_Y,
+  LAUNCHER_COOP_P1_X,
+  LAUNCHER_COOP_P2_X,
   LAUNCHER_X,
   LAUNCHER_Y,
-  MAX_ROWS
+  MAX_ROWS,
+  P1_THEME_COLOR,
+  P2_THEME_COLOR
 } from './constants';
 import { getColsInRow, getHexPosition } from './grid';
 import { TrajectoryResult } from './physics';
@@ -53,6 +57,13 @@ export class GameRenderer {
     shotsBeforeDrop: number;
     maxShotsBeforeDrop: number;
     warningTime: number;
+    coop?: {
+      p2AimAngle: number;
+      p2CurrentBubble: BubbleColor;
+      p2NextBubble: BubbleColor;
+      p2Trajectory: TrajectoryResult | null;
+      p2Projectile: Projectile | null;
+    };
   }): void {
     this.animTime += 0.03;
     const ctx = this.ctx;
@@ -88,14 +99,29 @@ export class GameRenderer {
     this.drawDeadline();
 
     // Draw Trajectory Guide Line (if projectile is NOT flying)
-    if (!params.projectile && params.trajectory) {
-      this.drawTrajectory(params.trajectory, params.currentBubble);
+    if (params.coop) {
+      if (!params.projectile && params.trajectory) {
+        this.drawTrajectory(params.trajectory, params.currentBubble, {
+          stroke: 'rgba(0, 210, 255, 0.85)',
+          glow: 'rgba(0, 210, 255, 0.7)'
+        });
+      }
+      if (!params.coop.p2Projectile && params.coop.p2Trajectory) {
+        this.drawTrajectory(params.coop.p2Trajectory, params.coop.p2CurrentBubble, {
+          stroke: 'rgba(255, 45, 85, 0.85)',
+          glow: 'rgba(255, 45, 85, 0.7)'
+        });
+      }
+    } else {
+      if (!params.projectile && params.trajectory) {
+        this.drawTrajectory(params.trajectory, params.currentBubble);
+      }
     }
 
     // Draw Dropping Bubbles
     this.drawDroppingBubbles(params.droppingBubbles);
 
-    // Draw Projectile
+    // Draw Projectile(s)
     if (params.projectile) {
       this.drawBubble(
         params.projectile.x,
@@ -106,12 +132,43 @@ export class GameRenderer {
         0
       );
     }
+    if (params.coop && params.coop.p2Projectile) {
+      this.drawBubble(
+        params.coop.p2Projectile.x,
+        params.coop.p2Projectile.y,
+        params.coop.p2Projectile.color,
+        params.coop.p2Projectile.radius,
+        1,
+        0
+      );
+    }
 
     // Draw Particles
     this.drawParticles(params.particles);
 
     // Draw Launcher & Next Bubble
-    this.drawLauncher(params.aimAngle, params.currentBubble, params.nextBubble);
+    if (params.coop) {
+      this.drawLauncher(
+        params.aimAngle,
+        params.currentBubble,
+        params.nextBubble,
+        LAUNCHER_COOP_P1_X,
+        P1_THEME_COLOR,
+        true,
+        'P1'
+      );
+      this.drawLauncher(
+        params.coop.p2AimAngle,
+        params.coop.p2CurrentBubble,
+        params.coop.p2NextBubble,
+        LAUNCHER_COOP_P2_X,
+        P2_THEME_COLOR,
+        true,
+        'P2'
+      );
+    } else {
+      this.drawLauncher(params.aimAngle, params.currentBubble, params.nextBubble);
+    }
 
     // Draw Score Popups
     this.drawScorePopups(params.scorePopups);
@@ -265,7 +322,11 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  private drawTrajectory(trajectory: TrajectoryResult, color: BubbleColor): void {
+  private drawTrajectory(
+    trajectory: TrajectoryResult,
+    color: BubbleColor,
+    customTheme?: { stroke: string; glow: string }
+  ): void {
     const ctx = this.ctx;
     ctx.save();
 
@@ -275,8 +336,8 @@ export class GameRenderer {
     ctx.setLineDash([6, 8]);
     ctx.lineDashOffset = -this.animTime * 25;
     ctx.lineWidth = 3.5;
-    ctx.strokeStyle = def.light;
-    ctx.shadowColor = def.glow;
+    ctx.strokeStyle = customTheme ? customTheme.stroke : def.light;
+    ctx.shadowColor = customTheme ? customTheme.glow : def.glow;
     ctx.shadowBlur = 10;
     ctx.lineCap = 'round';
 
@@ -508,38 +569,52 @@ export class GameRenderer {
   private drawLauncher(
     aimAngle: number,
     currentBubble: BubbleColor,
-    nextBubble: BubbleColor
+    nextBubble: BubbleColor,
+    x: number = LAUNCHER_X,
+    themeColor: string = '#8392cf',
+    isCoop: boolean = false,
+    playerLabel: string = ''
   ): void {
     const ctx = this.ctx;
     ctx.save();
 
+    const radius = isCoop ? 38 : 52;
+
     // 1. Base pedestal
     ctx.fillStyle = '#22253b';
     ctx.beginPath();
-    ctx.arc(LAUNCHER_X, LAUNCHER_Y + 18, 52, Math.PI, 0);
+    ctx.arc(x, LAUNCHER_Y + 18, radius, Math.PI, 0);
     ctx.fill();
-    ctx.strokeStyle = '#4e567a';
+    ctx.strokeStyle = themeColor;
     ctx.lineWidth = 3;
     ctx.stroke();
 
     // Decorative gear ticks
-    ctx.strokeStyle = '#6d78a8';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 7; i++) {
-      const ang = Math.PI + (i * Math.PI) / 6;
-      const x1 = LAUNCHER_X + Math.cos(ang) * 44;
-      const y1 = LAUNCHER_Y + 18 + Math.sin(ang) * 44;
-      const x2 = LAUNCHER_X + Math.cos(ang) * 52;
-      const y2 = LAUNCHER_Y + 18 + Math.sin(ang) * 52;
+    ctx.strokeStyle = themeColor;
+    ctx.lineWidth = 1.8;
+    const ticks = isCoop ? 5 : 7;
+    for (let i = 0; i < ticks; i++) {
+      const ang = Math.PI + (i * Math.PI) / (ticks - 1);
+      const x1 = x + Math.cos(ang) * (radius - 8);
+      const y1 = LAUNCHER_Y + 18 + Math.sin(ang) * (radius - 8);
+      const x2 = x + Math.cos(ang) * radius;
+      const y2 = LAUNCHER_Y + 18 + Math.sin(ang) * radius;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
     }
 
+    if (playerLabel) {
+      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.fillStyle = themeColor;
+      ctx.textAlign = 'center';
+      ctx.fillText(playerLabel, x, LAUNCHER_Y + 14);
+    }
+
     // 2. Rotating Launcher Barrel
     ctx.save();
-    ctx.translate(LAUNCHER_X, LAUNCHER_Y);
+    ctx.translate(x, LAUNCHER_Y);
     ctx.rotate(aimAngle);
 
     // Barrel body
@@ -552,7 +627,7 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.roundRect(-16, -48, 32, 44, [6, 6, 2, 2]);
     ctx.fill();
-    ctx.strokeStyle = '#8392cf';
+    ctx.strokeStyle = themeColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -570,26 +645,27 @@ export class GameRenderer {
 
     ctx.restore();
 
-    // 3. NEXT bubble preview on left
-    const nextX = LAUNCHER_X - 96;
+    // 3. NEXT bubble preview
+    const nextOffset = isCoop ? (x < CANVAS_WIDTH / 2 ? -54 : 54) : -96;
+    const nextX = x + nextOffset;
     const nextY = LAUNCHER_Y + 8;
 
     ctx.fillStyle = 'rgba(20, 22, 38, 0.7)';
     ctx.beginPath();
-    ctx.arc(nextX, nextY, 28, 0, Math.PI * 2);
+    ctx.arc(nextX, nextY, isCoop ? 22 : 28, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(100, 130, 200, 0.4)';
+    ctx.strokeStyle = themeColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
     // "NEXT" label tag
-    ctx.font = 'bold 10px system-ui, sans-serif';
-    ctx.fillStyle = '#8ca0cc';
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.fillStyle = themeColor;
     ctx.textAlign = 'center';
-    ctx.fillText('NEXT', nextX, nextY - 20);
+    ctx.fillText('NEXT', nextX, nextY - (isCoop ? 16 : 20));
 
     // Next bubble (slightly smaller)
-    this.drawBubble(nextX, nextY + 3, nextBubble, BUBBLE_RADIUS * 0.82, 1, 0);
+    this.drawBubble(nextX, nextY + 2, nextBubble, BUBBLE_RADIUS * (isCoop ? 0.72 : 0.82), 1, 0);
 
     ctx.restore();
   }

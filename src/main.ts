@@ -6,6 +6,8 @@ import {
   CANVAS_WIDTH,
   COLOR_DEFS,
   DEADLINE_Y,
+  LAUNCHER_COOP_P1_X,
+  LAUNCHER_COOP_P2_X,
   LAUNCHER_X,
   LAUNCHER_Y,
   MAX_AIM_ANGLE,
@@ -35,20 +37,27 @@ import {
   GameState,
   GridCell,
   Particle,
+  PlayerNetworkState,
+  PlayMode,
   Projectile,
   ScorePopup,
   StageData
 } from './types';
 import { UIManager } from './ui';
 import { initAnalytics } from './analytics';
+import { ChatManager } from './chat';
+import { networkManager } from './network';
 
 class BubblinGame {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private renderer: GameRenderer;
   private ui: UIManager;
+  private chatManager: ChatManager;
 
   private state: GameState = 'TITLE';
+  private playMode: PlayMode = 'SOLO';
+  private isLocal2P: boolean = false;
   private currentStageId: number = 1;
   private currentStageData!: StageData;
 
@@ -65,11 +74,26 @@ class BubblinGame {
   private warningTime: number = 0;
   private freezeFrames: number = 0;
 
-  // Aiming & shooting
-  private aimAngle: number = 0; // radians offset from vertical
+  // Aiming & shooting (P1)
+  private aimAngle: number = 0;
   private currentBubbleColor: BubbleColor = 'red';
   private nextBubbleColor: BubbleColor = 'blue';
   private projectile: Projectile | null = null;
+
+  // Opponent / P2 state
+  private opponentCanvas: HTMLCanvasElement | null = null;
+  private opponentCtx: CanvasRenderingContext2D | null = null;
+  private opponentRenderer: GameRenderer | null = null;
+  private opponentState: PlayerNetworkState | null = null;
+  private opponentGrid: GridCell[][] = [];
+
+  // P2 controls (Co-op / Local)
+  private p2AimAngle: number = 0;
+  private p2CurrentBubbleColor: BubbleColor = 'blue';
+  private p2NextBubbleColor: BubbleColor = 'green';
+  private p2Projectile: Projectile | null = null;
+  private keyLeftP2: boolean = false;
+  private keyRightP2: boolean = false;
 
   // Visual effects entities
   private droppingBubbles: DroppingBubble[] = [];
@@ -87,6 +111,17 @@ class BubblinGame {
     this.ctx = this.canvas.getContext('2d')!;
     this.renderer = new GameRenderer(this.ctx);
 
+    // Opponent screen setup
+    this.opponentCanvas = document.getElementById('opponent-canvas') as HTMLCanvasElement;
+    if (this.opponentCanvas) {
+      this.opponentCtx = this.opponentCanvas.getContext('2d');
+      if (this.opponentCtx) {
+        this.opponentRenderer = new GameRenderer(this.opponentCtx);
+      }
+    }
+    this.opponentGrid = createEmptyGrid();
+    this.chatManager = new ChatManager();
+
     const savedHighScore = localStorage.getItem('bubblin_highscore');
     if (savedHighScore) {
       this.highScore = parseInt(savedHighScore, 10) || 0;
@@ -94,6 +129,8 @@ class BubblinGame {
 
     this.ui = new UIManager({
       onStartGame: () => this.startGame(),
+      onStartMultiplayer: (mode, isHost, roomId, name, isLocal) =>
+        this.startMultiplayer(mode, isHost, roomId, name, isLocal),
       onNextStage: () => this.nextStage(),
       onRestartGame: () => this.restartGame(),
       onAimChange: (delta) => this.adjustAim(delta),
@@ -102,6 +139,7 @@ class BubblinGame {
       onSwapBubbles: () => this.swapBubbles()
     });
 
+    this.setupNetworkListeners();
     this.setupCanvasSize();
     this.setupInputs();
 
@@ -119,29 +157,189 @@ class BubblinGame {
       this.canvas.height = CANVAS_HEIGHT * dpr;
       this.ctx.resetTransform?.();
       this.ctx.scale(dpr, dpr);
+
+      if (this.opponentCanvas && this.opponentCtx) {
+        this.opponentCanvas.width = CANVAS_WIDTH * dpr;
+        this.opponentCanvas.height = CANVAS_HEIGHT * dpr;
+        this.opponentCtx.resetTransform?.();
+        this.opponentCtx.scale(dpr, dpr);
+      }
     };
 
     window.addEventListener('resize', resize);
     resize();
   }
 
+  private setupNetworkListeners(): void {
+    networkManager.onOpponentState((state) => {
+      this.opponentState = state;
+      if (state.grid && state.grid.length > 0) {
+        deserializeGrid(state.grid, this.opponentGrid);
+      }
+      if (state.isDead && this.state === 'PLAYING' && this.playMode === 'VERSUS') {
+        this.state = 'STAGE_CLEAR';
+        soundManager.playStageClear();
+        this.triggerConfetti();
+        this.ui.showVersusResult(true, this.score, state.score);
+      }
+      if (state.isCleared && this.state === 'PLAYING' && this.playMode === 'VERSUS') {
+        this.state = 'GAME_OVER';
+        soundManager.playGameOver();
+        this.ui.showVersusResult(false, this.score, state.score);
+      }
+    });
+
+    networkManager.onAttack((count) => {
+      this.handleIncomingAttack(count);
+    });
+
+    networkManager.onRoomStatus((status) => {
+      if (status === 'PLAYING' && this.state === 'LOBBY') {
+        this.ui.hideMultiplayerModal();
+        this.startMultiplayerGame();
+      }
+    });
+  }
+
+  public async startMultiplayer(
+    mode: PlayMode,
+    isHost: boolean,
+    roomId?: string,
+    playerName: string = 'Player 1',
+    isLocal: boolean = false
+  ): Promise<void> {
+    this.playMode = mode;
+    this.isLocal2P = isLocal;
+
+    if (isLocal) {
+      this.ui.hideMultiplayerModal();
+      this.chatManager.setVisible(true);
+      this.chatManager.updateRoomInfo('LOCAL', mode);
+      this.startMultiplayerGame();
+      return;
+    }
+
+    if (isHost) {
+      const code = await networkManager.createRoom(mode, playerName, 1);
+      this.state = 'LOBBY';
+      this.ui.showWaitingPanel(code);
+      this.chatManager.setVisible(true);
+      this.chatManager.updateRoomInfo(code, mode);
+    } else if (roomId) {
+      const res = await networkManager.joinRoom(roomId, playerName);
+      if (res.success) {
+        this.playMode = res.mode;
+        this.ui.hideMultiplayerModal();
+        this.chatManager.setVisible(true);
+        this.chatManager.updateRoomInfo(roomId, res.mode);
+        this.startMultiplayerGame();
+      } else {
+        alert(res.error || 'ルームへの参加に失敗しました。');
+      }
+    }
+  }
+
+  private startMultiplayerGame(): void {
+    this.state = 'PLAYING';
+    this.score = 0;
+    this.combo = 0;
+    this.opponentGrid = createEmptyGrid();
+    this.loadStage(1);
+
+    if (this.playMode === 'VERSUS') {
+      this.ui.setVersusLayout(true);
+      // Initialize opponent stage grid identical to my stage
+      const layout = this.currentStageData.layout;
+      for (let r = 0; r < layout.length; r++) {
+        for (let c = 0; c < layout[r].length; c++) {
+          if (layout[r][c] && r < this.opponentGrid.length && c < this.opponentGrid[r].length) {
+            this.opponentGrid[r][c].color = layout[r][c];
+          }
+        }
+      }
+    } else {
+      this.ui.setVersusLayout(false);
+      this.p2CurrentBubbleColor = this.pickNextBubbleColor();
+      this.p2NextBubbleColor = this.pickNextBubbleColor();
+    }
+
+    soundManager.startBgm();
+    soundManager.setBgmDucking(false);
+
+    // Initial sync
+    networkManager.syncPlayerState({
+      ready: true,
+      aimAngle: this.aimAngle,
+      currentBubble: this.currentBubbleColor,
+      nextBubble: this.nextBubbleColor,
+      score: this.score,
+      combo: this.combo,
+      ceilingY: this.ceilingY,
+      shotsBeforeDrop: this.shotsBeforeDrop,
+      grid: serializeGrid(this.grid),
+      isDead: false,
+      isCleared: false
+    }, true);
+  }
+
   private setupInputs(): void {
     // Keyboard inputs
     window.addEventListener('keydown', (e) => {
+      const activeId = (document.activeElement as HTMLElement)?.id;
+      if (activeId === 'chat-input' || activeId === 'firebase-config-textarea' || activeId === 'join-room-input' || activeId === 'player-name-input') {
+        return; // Ignore game hotkeys when typing in forms
+      }
+
+      if (this.isLocal2P) {
+        // P1 controls (WASD + Space)
+        if (e.code === 'KeyA') this.keyLeft = true;
+        if (e.code === 'KeyD') this.keyRight = true;
+        if (e.code === 'Space') {
+          e.preventDefault();
+          this.shoot(false);
+        }
+        if (e.code === 'KeyW') {
+          e.preventDefault();
+          this.swapBubbles(false);
+        }
+
+        // P2 controls (Arrows + Enter)
+        if (e.code === 'ArrowLeft') this.keyLeftP2 = true;
+        if (e.code === 'ArrowRight') this.keyRightP2 = true;
+        if (e.code === 'Enter' || e.code === 'Numpad0') {
+          e.preventDefault();
+          this.shoot(true);
+        }
+        if (e.code === 'ArrowUp') {
+          e.preventDefault();
+          this.swapBubbles(true);
+        }
+        return;
+      }
+
+      // Solo & Network mode controls
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
         this.keyLeft = true;
       } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
         this.keyRight = true;
       } else if (e.code === 'Space') {
         e.preventDefault();
-        this.shoot();
+        this.shoot(false);
       } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         e.preventDefault();
-        this.swapBubbles();
+        this.swapBubbles(false);
       }
     });
 
     window.addEventListener('keyup', (e) => {
+      if (this.isLocal2P) {
+        if (e.code === 'KeyA') this.keyLeft = false;
+        if (e.code === 'KeyD') this.keyRight = false;
+        if (e.code === 'ArrowLeft') this.keyLeftP2 = false;
+        if (e.code === 'ArrowRight') this.keyRightP2 = false;
+        return;
+      }
+
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
         this.keyLeft = false;
       } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
@@ -157,11 +355,10 @@ class BubblinGame {
       const canvasX = (e.clientX - rect.left) * scaleX;
       const canvasY = (e.clientY - rect.top) * scaleY;
 
-      // Calculate angle relative to launcher
-      const dx = canvasX - LAUNCHER_X;
+      const originX = this.playMode === 'COOP' ? LAUNCHER_COOP_P1_X : LAUNCHER_X;
+      const dx = canvasX - originX;
       const dy = canvasY - LAUNCHER_Y;
       if (dy < -10) {
-        // Only aim if pointing upwards
         let angle = Math.atan2(dx, -dy);
         angle = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, angle));
         this.setAim(angle);
@@ -184,9 +381,8 @@ class BubblinGame {
     const finishPointerAim = (e: PointerEvent) => {
       if (this.isPointerAiming) {
         this.isPointerAiming = false;
-        // On desktop click or mobile tap release, if not dragging lever, shoot!
         if (e.pointerType === 'mouse') {
-          this.shoot();
+          this.shoot(false);
         }
       }
     };
@@ -198,18 +394,34 @@ class BubblinGame {
   public setAim(angle: number): void {
     this.aimAngle = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, angle));
     this.ui.updateLeverThumb(this.aimAngle);
+    networkManager.syncPlayerState({ aimAngle: this.aimAngle });
   }
 
   public adjustAim(delta: number): void {
     this.setAim(this.aimAngle + delta);
   }
 
-  public swapBubbles(): void {
-    if (this.state !== 'PLAYING' || this.projectile) return;
+  public swapBubbles(isP2: boolean = false): void {
+    if (this.state !== 'PLAYING') return;
+
+    if (isP2) {
+      if (this.p2Projectile) return;
+      const temp = this.p2CurrentBubbleColor;
+      this.p2CurrentBubbleColor = this.p2NextBubbleColor;
+      this.p2NextBubbleColor = temp;
+      soundManager.playBounce();
+      return;
+    }
+
+    if (this.projectile) return;
     const temp = this.currentBubbleColor;
     this.currentBubbleColor = this.nextBubbleColor;
     this.nextBubbleColor = temp;
     soundManager.playBounce();
+    networkManager.syncPlayerState({
+      currentBubble: this.currentBubbleColor,
+      nextBubble: this.nextBubbleColor
+    });
   }
 
   private loadStage(stageId: number): void {
@@ -237,6 +449,11 @@ class BubblinGame {
     this.currentBubbleColor = this.pickNextBubbleColor();
     this.nextBubbleColor = this.pickNextBubbleColor();
 
+    if (this.playMode === 'COOP') {
+      this.p2CurrentBubbleColor = this.pickNextBubbleColor();
+      this.p2NextBubbleColor = this.pickNextBubbleColor();
+    }
+
     this.ui.updateHUD(
       this.score,
       this.highScore,
@@ -257,6 +474,10 @@ class BubblinGame {
   }
 
   public startGame(): void {
+    this.playMode = 'SOLO';
+    this.isLocal2P = false;
+    this.chatManager.setVisible(false);
+    this.ui.setVersusLayout(false);
     this.score = 0;
     this.combo = 0;
     this.loadStage(1);
@@ -274,16 +495,39 @@ class BubblinGame {
   }
 
   public restartGame(): void {
-    this.startGame();
+    if (this.playMode === 'SOLO') {
+      this.startGame();
+    } else {
+      this.startMultiplayerGame();
+    }
   }
 
-  public shoot(): void {
-    if (this.state !== 'PLAYING' || this.projectile) return;
+  public shoot(isP2: boolean = false): void {
+    if (this.state !== 'PLAYING') return;
 
+    if (isP2) {
+      if (this.p2Projectile) return;
+      soundManager.playShoot();
+      const startX = LAUNCHER_COOP_P2_X + Math.sin(this.p2AimAngle) * BARREL_LENGTH;
+      const startY = LAUNCHER_Y - Math.cos(this.p2AimAngle) * BARREL_LENGTH;
+      this.p2Projectile = {
+        x: startX,
+        y: startY,
+        vx: Math.sin(this.p2AimAngle) * PROJECTILE_SPEED,
+        vy: -Math.cos(this.p2AimAngle) * PROJECTILE_SPEED,
+        color: this.p2CurrentBubbleColor,
+        radius: BUBBLE_RADIUS
+      };
+      this.p2CurrentBubbleColor = this.p2NextBubbleColor;
+      this.p2NextBubbleColor = this.pickNextBubbleColor();
+      return;
+    }
+
+    if (this.projectile) return;
     soundManager.playShoot();
 
-    // Spawn projectile from launcher tip
-    const startX = LAUNCHER_X + Math.sin(this.aimAngle) * BARREL_LENGTH;
+    const launcherX = this.playMode === 'COOP' ? LAUNCHER_COOP_P1_X : LAUNCHER_X;
+    const startX = launcherX + Math.sin(this.aimAngle) * BARREL_LENGTH;
     const startY = LAUNCHER_Y - Math.cos(this.aimAngle) * BARREL_LENGTH;
 
     this.projectile = {
@@ -295,9 +539,14 @@ class BubblinGame {
       radius: BUBBLE_RADIUS
     };
 
-    // Prepare next bubble
     this.currentBubbleColor = this.nextBubbleColor;
     this.nextBubbleColor = this.pickNextBubbleColor();
+
+    networkManager.syncPlayerState({
+      currentBubble: this.currentBubbleColor,
+      nextBubble: this.nextBubbleColor,
+      projectile: this.projectile
+    }, true);
   }
 
   private addScore(
@@ -381,13 +630,18 @@ class BubblinGame {
     }
   }
 
-  private handleSnap(snapCell: { row: number; col: number }): void {
-    if (!this.projectile) return;
+  private handleSnap(snapCell: { row: number; col: number }, isP2: boolean = false): void {
+    const proj = isP2 ? this.p2Projectile : this.projectile;
+    if (!proj) return;
 
     soundManager.playSnap();
-    const color = this.projectile.color;
+    const color = proj.color;
     this.grid[snapCell.row][snapCell.col].color = color;
-    this.projectile = null;
+    if (isP2) {
+      this.p2Projectile = null;
+    } else {
+      this.projectile = null;
+    }
 
     const snapPos = getHexPosition(snapCell.row, snapCell.col, this.ceilingY);
 
@@ -425,6 +679,12 @@ class BubblinGame {
           this.renderer.triggerShake(6 + Math.min(6, floating.length));
         }
 
+        // Versus Mode: send attack bubbles to opponent!
+        if (this.playMode === 'VERSUS') {
+          const attackCount = Math.max(1, Math.floor(floating.length / 2));
+          networkManager.sendAttack(attackCount);
+        }
+
         // Spawn multiple expanding shockwave rings from severance point
         const ringCount = Math.min(3, Math.ceil(floating.length / 3));
         for (let ring = 0; ring < ringCount; ring++) {
@@ -460,7 +720,6 @@ class BubblinGame {
           });
         }
 
-        // Bonus for dropping bubbles: 2^(count) * 100
         const dropBonus = Math.min(50000, Math.pow(2, floating.length) * 100);
 
         let bannerTitle = `DROP x${floating.length}!`;
@@ -504,6 +763,13 @@ class BubblinGame {
         soundManager.setBgmDucking(true);
         soundManager.playStageClear();
         this.triggerConfetti();
+
+        if (this.playMode === 'VERSUS') {
+          networkManager.syncPlayerState({ isCleared: true, score: this.score }, true);
+          this.ui.showVersusResult(true, this.score, this.opponentState?.score || 0);
+          return;
+        }
+
         const isFinal = this.currentStageId === 30;
         setTimeout(() => {
           this.ui.showStageClear(this.score, this.currentStageData.name, isFinal);
@@ -517,9 +783,8 @@ class BubblinGame {
 
       if (this.shotsBeforeDrop === 1) {
         soundManager.playWarning();
-        this.warningTime = 60; // flash ceiling
+        this.warningTime = 60;
       } else if (this.shotsBeforeDrop <= 0) {
-        // Ceiling drops down by 1 row!
         soundManager.playWarning();
         this.renderer.triggerShake(10);
         this.targetCeilingY += ROW_HEIGHT;
@@ -527,13 +792,22 @@ class BubblinGame {
       }
     }
 
+    // Sync state
+    networkManager.syncPlayerState({
+      grid: serializeGrid(this.grid),
+      score: this.score,
+      combo: this.combo,
+      ceilingY: this.ceilingY,
+      shotsBeforeDrop: this.shotsBeforeDrop
+    });
+
     // Check Deadline Crossing (Game Over)
     if (isDeadlineCrossed(this.grid, this.ceilingY, DEADLINE_Y)) {
       this.gameOver();
       return;
     }
 
-    // If remaining colors on board changed, ensure loaded bubbles match what's on board
+    // Update loaded bubble colors
     const remainingColors = getOccupiedColors(this.grid);
     if (remainingColors.length > 0) {
       if (!remainingColors.includes(this.currentBubbleColor)) {
@@ -541,6 +815,14 @@ class BubblinGame {
       }
       if (!remainingColors.includes(this.nextBubbleColor)) {
         this.nextBubbleColor = remainingColors[Math.floor(Math.random() * remainingColors.length)];
+      }
+      if (this.playMode === 'COOP') {
+        if (!remainingColors.includes(this.p2CurrentBubbleColor)) {
+          this.p2CurrentBubbleColor = remainingColors[Math.floor(Math.random() * remainingColors.length)];
+        }
+        if (!remainingColors.includes(this.p2NextBubbleColor)) {
+          this.p2NextBubbleColor = remainingColors[Math.floor(Math.random() * remainingColors.length)];
+        }
       }
     }
 
@@ -553,11 +835,39 @@ class BubblinGame {
     );
   }
 
+  private handleIncomingAttack(count: number): void {
+    soundManager.playWarning();
+    this.renderer.triggerShake(8);
+    this.scorePopups.push({
+      x: CANVAS_WIDTH / 2,
+      y: this.ceilingY + 60,
+      text: `⚠️ ATTACK INCOMING x${count}!`,
+      color: '#ff2d55',
+      alpha: 1,
+      scale: 1.2,
+      life: 0,
+      fontSize: 22,
+      isBanner: true
+    });
+
+    this.shotsBeforeDrop = Math.max(1, this.shotsBeforeDrop - count);
+    if (this.shotsBeforeDrop <= 1) {
+      this.warningTime = 40;
+    }
+  }
+
   private gameOver(): void {
     this.state = 'GAME_OVER';
     soundManager.stopBgm();
     soundManager.playGameOver();
     this.renderer.triggerShake(12);
+
+    if (this.playMode === 'VERSUS') {
+      networkManager.syncPlayerState({ isDead: true, score: this.score }, true);
+      this.ui.showVersusResult(false, this.score, this.opponentState?.score || 0);
+      return;
+    }
+
     setTimeout(() => {
       this.ui.showGameOver(this.score, this.highScore);
     }, 600);
@@ -582,6 +892,16 @@ class BubblinGame {
       if (this.keyRight) {
         this.adjustAim(0.035);
       }
+
+      // P2 Local controls
+      if (this.isLocal2P) {
+        if (this.keyLeftP2) {
+          this.p2AimAngle = Math.max(MIN_AIM_ANGLE, this.p2AimAngle - 0.035);
+        }
+        if (this.keyRightP2) {
+          this.p2AimAngle = Math.min(MAX_AIM_ANGLE, this.p2AimAngle + 0.035);
+        }
+      }
     }
 
     // Smooth ceiling descent interpolation
@@ -599,21 +919,33 @@ class BubblinGame {
       this.warningTime--;
     }
 
-    // Update projectile flight
+    // Update projectile flight (P1)
     if (this.projectile) {
       const res = updateProjectile(this.projectile, this.grid, this.ceilingY);
       if (res.bounced) {
         soundManager.playBounce();
       }
       if (res.hit && res.snapCell) {
-        this.handleSnap(res.snapCell);
+        this.handleSnap(res.snapCell, false);
       } else if (res.hit && !res.snapCell) {
-        // Fallback: lost projectile or full grid
         this.projectile = null;
       }
     }
 
-    // Update falling bubbles with juicy fireworks bursts on bottom
+    // Update projectile flight (P2 in Co-op)
+    if (this.playMode === 'COOP' && this.p2Projectile) {
+      const res = updateProjectile(this.p2Projectile, this.grid, this.ceilingY);
+      if (res.bounced) {
+        soundManager.playBounce();
+      }
+      if (res.hit && res.snapCell) {
+        this.handleSnap(res.snapCell, true);
+      } else if (res.hit && !res.snapCell) {
+        this.p2Projectile = null;
+      }
+    }
+
+    // Update falling bubbles
     updateDroppingBubbles(this.droppingBubbles, (bx, by, bColor) => {
       soundManager.playBubbleSplash();
       this.triggerPopParticles(bx, by, bColor);
@@ -624,9 +956,12 @@ class BubblinGame {
 
   private render(): void {
     let trajectory = null;
+    const isCoop = this.playMode === 'COOP';
+
+    const p1LauncherX = isCoop ? LAUNCHER_COOP_P1_X : LAUNCHER_X;
     if (this.state === 'PLAYING' && !this.projectile) {
       trajectory = calculateTrajectory(
-        LAUNCHER_X + Math.sin(this.aimAngle) * BARREL_LENGTH,
+        p1LauncherX + Math.sin(this.aimAngle) * BARREL_LENGTH,
         LAUNCHER_Y - Math.cos(this.aimAngle) * BARREL_LENGTH,
         this.aimAngle,
         this.grid,
@@ -634,6 +969,18 @@ class BubblinGame {
       );
     }
 
+    let p2Trajectory = null;
+    if (isCoop && this.state === 'PLAYING' && !this.p2Projectile) {
+      p2Trajectory = calculateTrajectory(
+        LAUNCHER_COOP_P2_X + Math.sin(this.p2AimAngle) * BARREL_LENGTH,
+        LAUNCHER_Y - Math.cos(this.p2AimAngle) * BARREL_LENGTH,
+        this.p2AimAngle,
+        this.grid,
+        this.ceilingY
+      );
+    }
+
+    // Render local / main canvas
     this.renderer.render({
       grid: this.grid,
       ceilingY: this.ceilingY,
@@ -648,8 +995,65 @@ class BubblinGame {
       trajectory,
       shotsBeforeDrop: this.shotsBeforeDrop,
       maxShotsBeforeDrop: this.maxShotsBeforeDrop,
-      warningTime: this.warningTime
+      warningTime: this.warningTime,
+      coop: isCoop
+        ? {
+            p2AimAngle: this.p2AimAngle,
+            p2CurrentBubble: this.p2CurrentBubbleColor,
+            p2NextBubble: this.p2NextBubbleColor,
+            p2Trajectory,
+            p2Projectile: this.p2Projectile
+          }
+        : undefined
     });
+
+    // If Versus mode, render opponent's canvas
+    if (this.playMode === 'VERSUS' && this.opponentRenderer) {
+      let oppTrajectory = null;
+      if (this.opponentState && !this.opponentState.projectile) {
+        oppTrajectory = calculateTrajectory(
+          LAUNCHER_X + Math.sin(this.opponentState.aimAngle) * BARREL_LENGTH,
+          LAUNCHER_Y - Math.cos(this.opponentState.aimAngle) * BARREL_LENGTH,
+          this.opponentState.aimAngle,
+          this.opponentGrid,
+          this.opponentState.ceilingY || 0
+        );
+      }
+
+      this.opponentRenderer.render({
+        grid: this.opponentGrid,
+        ceilingY: this.opponentState?.ceilingY || 0,
+        currentBubble: this.opponentState?.currentBubble || 'blue',
+        nextBubble: this.opponentState?.nextBubble || 'green',
+        aimAngle: this.opponentState?.aimAngle || 0,
+        projectile: this.opponentState?.projectile
+          ? { ...this.opponentState.projectile, radius: BUBBLE_RADIUS }
+          : null,
+        droppingBubbles: [],
+        particles: [],
+        scorePopups: [],
+        confettiList: [],
+        trajectory: oppTrajectory,
+        shotsBeforeDrop: this.opponentState?.shotsBeforeDrop || 6,
+        maxShotsBeforeDrop: 6,
+        warningTime: 0
+      });
+    }
+  }
+}
+
+function serializeGrid(grid: GridCell[][]): (BubbleColor | null)[][] {
+  return grid.map((row) => row.map((cell) => cell.color));
+}
+
+function deserializeGrid(data: (BubbleColor | null)[][], targetGrid: GridCell[][]): void {
+  for (let r = 0; r < data.length; r++) {
+    if (!targetGrid[r] || !data[r]) continue;
+    for (let c = 0; c < data[r].length; c++) {
+      if (targetGrid[r][c]) {
+        targetGrid[r][c].color = data[r][c];
+      }
+    }
   }
 }
 

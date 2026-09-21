@@ -46,7 +46,14 @@
 
         <!-- Main Game Canvas Container -->
         <div id="canvas-container">
-          <canvas id="game-canvas"></canvas>
+          <div id="local-screen" class="screen-view">
+            <div id="local-player-badge" class="screen-badge hidden">YOU (P1)</div>
+            <canvas id="game-canvas"></canvas>
+          </div>
+          <div id="opponent-screen" class="screen-view hidden">
+            <div id="opponent-player-badge" class="screen-badge rival">RIVAL (P2)</div>
+            <canvas id="opponent-canvas"></canvas>
+          </div>
         </div>
 
         <!-- Bottom Controls for Mobile & Accessibility -->
@@ -77,6 +84,37 @@
         </footer>
       </div>
 
+      <!-- PC Right-Side Text Chat Panel -->
+      <aside id="chat-panel" class="chat-panel hidden">
+        <div class="chat-header">
+          <div class="chat-title">
+            <span class="chat-icon">💬</span>
+            <span class="chat-heading">ROOM CHAT</span>
+          </div>
+          <div class="chat-header-meta">
+            <span id="chat-room-code" class="chat-room-badge">BUB</span>
+            <span id="chat-room-mode" class="chat-mode-badge">⚔️ VS</span>
+            <button id="copy-invite-btn" class="chat-copy-btn" title="招待URLをコピー">🔗 招待</button>
+          </div>
+        </div>
+
+        <div id="chat-messages" class="chat-messages"></div>
+
+        <div class="chat-quick-reactions">
+          <button class="chat-emoji-btn" data-emoji="🫧" title="バブル">🫧</button>
+          <button class="chat-emoji-btn" data-emoji="👏" title="拍手">👏</button>
+          <button class="chat-emoji-btn" data-emoji="🔥" title="ファイヤー">🔥</button>
+          <button class="chat-emoji-btn" data-emoji="💀" title="ドクロ">💀</button>
+          <button class="chat-emoji-btn" data-emoji="💥" title="バーン">💥</button>
+          <button class="chat-emoji-btn" data-emoji="🎮" title="GG">🎮</button>
+        </div>
+
+        <div class="chat-input-bar">
+          <input id="chat-input" type="text" placeholder="メッセージを入力... (Enterで送信)" maxlength="100" />
+          <button id="chat-send-btn" class="chat-send-btn" title="送信">➤</button>
+        </div>
+      </aside>
+
       <!-- Title Modal -->
       <div id="title-modal" class="modal-overlay">
         <div class="modal-card">
@@ -103,9 +141,101 @@
             </ul>
           </div>
 
-          <button id="start-game-btn" class="modal-btn start-btn">
-            GAME START
-          </button>
+          <div class="title-buttons-row">
+            <button id="start-game-btn" class="modal-btn start-btn">
+              1人プレイ (SOLO)
+            </button>
+            <button id="multiplayer-btn" class="modal-btn multi-btn">
+              🎮 2人同時プレイ (2 PLAYERS)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Multiplayer Setup Modal -->
+      <div id="multiplayer-modal" class="modal-overlay hidden">
+        <div class="modal-card multiplayer-card">
+          <div class="modal-icon">🎮</div>
+          <h2>2人同時プレイ</h2>
+          <p class="multi-sub">モードを選択してルームを作成・参加してください</p>
+
+          <!-- Mode Select Tabs -->
+          <div class="mode-select-tabs">
+            <button id="mode-tab-versus" class="mode-tab active" data-mode="VERSUS">
+              <span class="mode-icon">⚔️</span>
+              <span class="mode-name">対戦モード</span>
+              <span class="mode-desc">左右2画面・スコア＆お邪魔競争</span>
+            </button>
+            <button id="mode-tab-coop" class="mode-tab" data-mode="COOP">
+              <span class="mode-icon">🤝</span>
+              <span class="mode-name">協力モード</span>
+              <span class="mode-desc">1画面2連装砲台・共同クリア</span>
+            </button>
+          </div>
+
+          <!-- Lobby Action Panel -->
+          <div id="multi-action-panel" class="multi-section">
+            <div class="input-group">
+              <label for="player-name-input">プレイヤー名:</label>
+              <input type="text" id="player-name-input" value="Player 1" maxlength="12" />
+            </div>
+
+            <div class="room-action-buttons">
+              <button id="create-room-btn" class="modal-btn action-create-btn">
+                ✨ 部屋を作る (HOST)
+              </button>
+              <div class="join-room-box">
+                <input type="text" id="join-room-input" placeholder="ルームコード (例: BUB77)" maxlength="10" />
+                <button id="join-room-btn" class="modal-btn action-join-btn">
+                  参加 (JOIN)
+                </button>
+              </div>
+            </div>
+
+            <div class="local-play-box">
+              <button id="local-2p-btn" class="modal-btn local-btn">
+                🖥️ 1台のPCで2人プレイ (オフライン対戦/協力)
+              </button>
+              <p class="local-tip">※P1: [A/D + SPACE] / P2: [←/→ + ENTER]</p>
+            </div>
+
+            <div class="firebase-config-link-box">
+              <button id="toggle-firebase-settings-btn" class="text-link-btn">
+                ⚙️ Firebase接続設定
+              </button>
+            </div>
+          </div>
+
+          <!-- Room Waiting Panel (shown when room is created) -->
+          <div id="multi-waiting-panel" class="multi-section hidden">
+            <div class="waiting-header">
+              <div class="waiting-spinner"></div>
+              <p class="waiting-text">対戦相手の参加を待っています...</p>
+            </div>
+            <div class="room-code-display">
+              <span class="code-label">ROOM CODE:</span>
+              <span id="waiting-room-code" class="code-value">BUB77</span>
+            </div>
+            <button id="waiting-copy-url-btn" class="modal-btn copy-url-btn">
+              📋 招待リンクをコピー
+            </button>
+            <button id="cancel-room-btn" class="modal-btn cancel-btn">
+              キャンセル
+            </button>
+          </div>
+
+          <!-- Firebase Settings Sub-Panel -->
+          <div id="firebase-settings-panel" class="multi-section hidden">
+            <h3>Firebase Realtime Database 設定</h3>
+            <p class="settings-desc">Firebase コンソールの設定JSONまたは Database URL を設定してください。</p>
+            <textarea id="firebase-config-textarea" placeholder='{"databaseURL": "https://xxx-default-rtdb.firebaseio.com", "apiKey": "..."}' rows="4"></textarea>
+            <div class="settings-btn-row">
+              <button id="save-firebase-config-btn" class="modal-btn small-btn">保存</button>
+              <button id="close-firebase-settings-btn" class="modal-btn small-btn cancel-btn">閉じる</button>
+            </div>
+          </div>
+
+          <button id="close-multi-modal-btn" class="modal-close-btn" aria-label="Close">✕</button>
         </div>
       </div>
 
@@ -126,9 +256,9 @@
       <div id="game-over-modal" class="modal-overlay hidden">
         <div class="modal-card gameover">
           <div class="modal-icon">💀</div>
-          <h2>GAME OVER</h2>
+          <h2 id="game-over-title">GAME OVER</h2>
           <p id="game-over-score-val" class="score-display">Score: 0</p>
-          <p class="gameover-sub">バブルがデッドラインを超えてしまいました！</p>
+          <p id="game-over-sub-text" class="gameover-sub">バブルがデッドラインを超えてしまいました！</p>
           <button id="restart-btn" class="modal-btn restart-btn">
             TRY AGAIN 🔄
           </button>

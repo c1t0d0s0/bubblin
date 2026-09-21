@@ -32,11 +32,22 @@ Playable seamlessly on both desktop and mobile devices, Bubblin' features glossy
   - **Stages 15–22 (Advanced)**: 5 colors (Orange), 6–7 shot countdowns, strategic bank shots and thin root links (Butterfly, Anchor, Temple Pillars).
   - **Stages 23–30 (Master)**: 6 colors, 5–6 shot countdowns, full rainbow spectrum (DNA Helix, Dragon Eye, Final Clash) leading to the Victory screen and Loop Mode.
 - **Automatic Bilingual Localization**: Automatically detects browser locale (`navigator.languages` / `navigator.language`) and serves Japanese for Japanese browsers and English for all others.
+- **Multiplayer & Dual Play (Online & Local)**:
+  - ⚔️ **Versus Mode (対戦モード)**: Side-by-side split screen on desktop. Both players see each other's live bubble board, aiming trajectory, and score in real time. Clearing large clusters (4+ bubbles) sends penalty attack bubbles onto the opponent's board!
+  - 🤝 **Co-op Mode (協力モード)**: Both players share a single 480px arena with side-by-side dual launchers (P1 Cyan at x=160, P2 Pink at x=320). Launch projectiles concurrently and coordinate shots on the same bubble matrix!
+  - 💬 **Desktop Real-Time Chat**: Live text chat panel on the right side of the game screen on desktop. Includes quick emoji reactions (👍, 🫧, 🔥, 😂, 😭, 👏) and auto-focus restoration to maintain instant keyboard control.
+  - 🎮 **Local 2P Mode (Offline)**: Play immediately on a shared keyboard without setting up Firebase (P1: `A`/`D`/`SPACE`, P2: `←`/`→`/`ENTER`).
+  - 🌐 **Firebase Realtime Database Synchronization**: Effortless peer-to-peer room creation using 5-character room codes (`BUB77`), automatic connection heartbeat, disconnect cleanup, and throttled network state sync.
+- **Automatic GitHub Pages Deployment (CI/CD)**:
+  - GitHub Actions automatically builds and deploys to GitHub Pages on every push to the `main` branch.
+  - Detects `vars.GTM_ID` from GitHub Repository Variables and dynamically injects Google Analytics (GA4) / Google Tag Manager tags.
 - **Dual Platform Controls**: Optimized for desktop (mouse & keyboard) and mobile (touch lever, on-screen launch button, direct screen dragging).
 
 ---
 
 ## 🎮 Controls
+
+### Single Player & Online Player 1 (YOU)
 
 | Action | Desktop (PC) | Mobile / Touch |
 | :--- | :--- | :--- |
@@ -45,6 +56,56 @@ Playable seamlessly on both desktop and mobile devices, Bubblin' features glossy
 | **Swap Bubble** | `↑` or `W` or On-screen Swap Button | `🔄 SWAP` Button |
 | **Toggle BGM** | Header `🎵` Button | Header `🎵` Button |
 | **Toggle SE** | Header `🔊` Button | Header `🔊` Button |
+
+### Local 2-Player Split Keyboard
+
+| Action | Player 1 (Left / Cyan) | Player 2 (Right / Pink) |
+| :--- | :--- | :--- |
+| **Aim / Steer** | `A` / `D` | `←` / `→` |
+| **Shoot** | `SPACE` | `ENTER` |
+| **Swap Bubble** | `W` | `↑` |
+
+---
+
+## 🌐 Multiplayer Setup (Firebase Realtime Database)
+
+Bubblin' uses **Firebase Realtime Database** for seamless real-time state synchronization, attack bubble delivery, and in-game chat.
+
+### 1. Create a Free Firebase Project
+1. Go to the [Firebase Console](https://console.firebase.google.com/) and create a project.
+2. In the sidebar, select **Build > Realtime Database** and create a database in your preferred region.
+3. In **Rules**, set read/write permissions for testing (or configure room-based security rules):
+   ```json
+   {
+     "rules": {
+       "bubblin_rooms": {
+         ".read": true,
+         ".write": true
+       }
+     }
+   }
+   ```
+4. In **Project settings > General**, register a Web App (`</>`) to obtain your Firebase configuration object.
+
+### 2. Configure Credentials
+You can provide Firebase credentials via **any** of the following methods:
+
+- **Option A: In-Game UI**: Click `👥 MULTIPLAYER` on the title screen, open `⚙️ Firebase Config`, paste your configuration, and click Save (stored securely in browser `localStorage`).
+- **Option B: `config.js`**: Copy `config.example.js` to `config.js` in the project root:
+  ```javascript
+  const GTM_ID = 'G-XXXXXXXXXX'; // Optional: Google Analytics / GTM ID
+
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSy...",
+    authDomain: "your-project.firebaseapp.com",
+    databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+    projectId: "your-project",
+    storageBucket: "your-project.appspot.com",
+    messagingSenderId: "1234567890",
+    appId: "1:1234567890:web:abcdef..."
+  };
+  ```
+- **Option C: `.env` file**: Define `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_DATABASE_URL`, etc.
 
 ---
 
@@ -83,26 +144,50 @@ All built assets in `dist/` use relative paths (`base: './'`), making it ready t
 
 ---
 
+## 🚢 Automated GitHub Actions Deployment to GitHub Pages
+
+The repository includes a ready-to-use GitHub Actions workflow (`.github/workflows/deploy.yml`):
+
+1. Go to your repository on GitHub: **Settings > Pages > Build and deployment**.
+2. Under **Source**, select **GitHub Actions**.
+3. (Optional) To enable Google Analytics, navigate to **Settings > Secrets and variables > Actions > Variables** tab, click **New repository variable**, and add:
+   - **Name**: `GTM_ID`
+   - **Value**: Your GA4 Measurement ID (`G-XXXXXXXXXX`) or GTM ID (`GTM-XXXXXXX`)
+4. Push to the `main` branch. GitHub Actions will automatically:
+   - Inject `vars.GTM_ID` into `config.js` (if defined).
+   - Build the Vite project.
+   - Deploy the production bundle to GitHub Pages.
+
+---
+
 ## 🏗️ Technical Architecture
 
 ```
 bubblin/
-├── index.html              # HTML shell, responsive UI layout, modals
-├── style.css               # Arcade neon theme, touch lever, mobile styles
-├── vite.config.ts          # Vite configuration with relative base './'
+├── .github/
+│   └── workflows/
+│       └── deploy.yml      # Automated GitHub Pages CI/CD workflow with GTM_ID injection
+├── index.html              # HTML shell, responsive UI layout, dual screens, chat panel, modals
+├── style.css               # Arcade neon theme, versus split screen, chat panel, mobile styles
+├── vite.config.ts          # Vite configuration with relative base './' & config.js copier
 ├── tsconfig.json           # TypeScript configuration
-├── package.json            # Scripts and dependencies
+├── package.json            # Scripts and dependencies (Firebase 11.x)
+├── config.example.js       # Template for GTM_ID and FIREBASE_CONFIG
 └── src/
-    ├── main.ts             # Game loop, hit-stop, state machine, event routing
-    ├── types.ts            # Core TypeScript interfaces & data models
-    ├── constants.ts        # Hex grid math, color definitions, screen geometry
+    ├── main.ts             # Game loop, hit-stop, versus/coop state machine, event routing
+    ├── types.ts            # Core TypeScript interfaces, multiplayer protocols, room models
+    ├── constants.ts        # Hex grid math, color definitions, launcher dual-coordinates
+    ├── firebase.ts         # Singleton Firebase app & Realtime Database instance loader
+    ├── network.ts          # Room creation, player join, heartbeat, state sync, attack bubbles
+    ├── chat.ts             # Real-time chat manager with quick emoji stamps and focus handling
+    ├── analytics.ts        # Dynamic GTM / GA4 (gtag.js) script injection
     ├── grid.ts             # Hexagonal grid calculation, snapping, deadline check
     ├── matching.ts         # BFS flood fill for match-3 & ceiling orphan detection
     ├── physics.ts          # Sub-stepped projectile updates, trajectory raycast, gravity
-    ├── renderer.ts         # 3D bubble rendering, comet trails, shockwaves, banners
-    ├── audio.ts            # Web Audio API brass trumpet synth & sound effects
+    ├── renderer.ts         # 3D bubble rendering, comet trails, shockwaves, co-op dual cannons
+    ├── audio.ts            # Web Audio API brass trumpet synth & retro pop BGM sequencer
     ├── stages.ts           # 30 handcrafted levels across 4 difficulty tiers
-    └── ui.ts               # HUD updates, touch lever drag handling, modals
+    └── ui.ts               # HUD updates, touch lever, multiplayer modal, versus result popup
 ```
 
 ---

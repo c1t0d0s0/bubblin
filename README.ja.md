@@ -32,11 +32,22 @@ PCでもスマートフォンでも快適に遊べるレスポンシブ設計で
   - **STAGE 15〜22 (上級)**: 5色（Orange解禁）、天井降下6〜7発。蝶、錨、神殿の柱など、根元を狙うパズル性と壁反射の技術が活きる陣形。
   - **STAGE 23〜30 (達人)**: 6色フルカラー、天井降下5〜6発。DNAヘリックス、ドラゴンアイ、ラストバトル。全制覇時は「ALL 30 STAGES CLEARED!」演出と周回ループモードへ。
 - **日英バイリンガル自動切替**: ブラウザの言語設定（`navigator.languages` / `navigator.language`）を検出し、日本語環境では日本語、それ以外の環境では英語に自動ローカライズ。
+- **2人同時プレイ＆マルチプレイヤー（オンライン＆ローカル）**:
+  - ⚔️ **対戦モード (Versus)**: PC画面で左右2画面分割。自分と相手のバブル盤面・照準・スコアがリアルタイムに同期。4個以上のバブルを一気に大量落下させると、相手の盤面にお邪魔バブル（Attack Bubbles）を送り込むスリリングな攻撃システム！
+  - 🤝 **協力モード (Co-op)**: 1つの盤面（480px幅）に2基の発射台（P1: 水色/x=160, P2: ピンク/x=320）が並び、同じバブル陣形に対して同時に弾を発射して協力クリアを目指すモード。
+  - 💬 **PC版リアルタイム・テキストチャット**: PC画面右側に専用チャットパネルを表示。ワンクリックの絵文字クイックスタンプ（👍, 🫧, 🔥, 😂, 😭, 👏）やEnter送信時のキーボード自動フォーカス復帰により、白熱したプレイを中断させず即座に会話可能。
+  - 🎮 **ローカル2Pオフライン対戦/協力**: Firebase設定がなくても、1台のキーボードを左右で分け合ってすぐにプレイ可能（P1: `A`/`D`/`SPACE`, P2: `←`/`→`/`ENTER`）。
+  - 🌐 **Firebase Realtime Database同期**: 5文字の短い部屋コード（`BUB77`）による手軽なマッチング、ハートビート監視、切断時の自動クリーンアップ（`onDisconnect`）、帯域を節約するスロットリング同期。
+- **GitHub ActionsによるGitHub Pages自動デプロイ (CI/CD)**:
+  - `main` ブランチへの push をトリガーとして自動ビルド＆デプロイを実行。
+  - リポジトリ変数 `vars.GTM_ID` が設定されている場合、ビルド時に自動で Google Analytics (GA4) / Google Tag Manager タグを注入。
 - **PC＆スマホ両対応ハイブリッドUI**: マウス・キーボード操作に加え、スマホ向けの左右旋回レバースライダー、左右ボタン、大画面「LAUNCH」ボタン、画面スワイプ操作を完備。
 
 ---
 
 ## 🎮 操作方法
+
+### 1人プレイ ＆ オンライン対戦・協力（自機: P1）
 
 | 操作 | PC (デスクトップ) | スマートフォン / タッチ端末 |
 | :--- | :--- | :--- |
@@ -45,6 +56,56 @@ PCでもスマートフォンでも快適に遊べるレスポンシブ設計で
 | **バブル交代** | `↑` または `W` または 画面上の交代ボタン | `🔄 SWAP` ボタン |
 | **BGM ON/OFF** | 画面右上の `🎵` ボタン | 画面右上の `🎵` ボタン |
 | **SE ON/OFF** | 画面右上の `🔊` ボタン | 画面右上の `🔊` ボタン |
+
+### ローカル2人プレイ（1台のキーボード分割操作）
+
+| 操作 | プレイヤー1 (左側 / 水色) | プレイヤー2 (右側 / ピンク) |
+| :--- | :--- | :--- |
+| **照準（旋回）** | `A` / `D` | `←` / `→` |
+| **発射** | `SPACE` | `ENTER` |
+| **バブル交代** | `W` | `↑` |
+
+---
+
+## 🌐 マルチプレイヤー（Firebase Realtime Database）の設定
+
+Bubblin' のオンラインマルチプレイは、無料の **Firebase Realtime Database** を用いてサーバーレスで動作します。
+
+### 1. Firebaseプロジェクトの作成（無料枠）
+1. [Firebase Console](https://console.firebase.google.com/) にアクセスし、新規プロジェクトを作成します。
+2. 左メニューから **構築 > Realtime Database** を選択し、データベースを作成します。
+3. **ルール** タブで、テスト用（またはルーム単位）の読み書きを許可します：
+   ```json
+   {
+     "rules": {
+       "bubblin_rooms": {
+         ".read": true,
+         ".write": true
+       }
+     }
+   }
+   ```
+4. **プロジェクトの設定 > 全般** の「マイアプリ」から Webアプリ（`</>`）を追加し、Firebase 設定オブジェクトを取得します。
+
+### 2. 設定の適用方法
+以下のいずれかの方法で簡単に設定できます：
+
+- **方法A: ゲーム内の設定画面から入力（最も簡単）**: タイトル画面の `👥 MULTIPLAYER` ➔ `⚙️ Firebase Config` を開き、設定JSONを貼り付けて保存（ブラウザの `localStorage` に保存されます）。
+- **方法B: `config.js` を配置**: プロジェクト直下の `config.example.js` を `config.js` にコピーし、値を入力：
+  ```javascript
+  const GTM_ID = 'G-XXXXXXXXXX'; // 任意: Google Analytics / GTM ID
+
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSy...",
+    authDomain: "your-project.firebaseapp.com",
+    databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+    projectId: "your-project",
+    storageBucket: "your-project.appspot.com",
+    messagingSenderId: "1234567890",
+    appId: "1:1234567890:web:abcdef..."
+  };
+  ```
+- **方法C: `.env` ファイル**: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_DATABASE_URL` などを記述。
 
 ---
 
@@ -83,26 +144,50 @@ npm run preview
 
 ---
 
+## 🚢 GitHub Actions による GitHub Pages 自動デプロイ
+
+リポジトリには公式の CI/CD ワークフロー（`.github/workflows/deploy.yml`）が同梱されています。
+
+1. GitHub リポジトリの **Settings > Pages > Build and deployment** を開きます。
+2. **Source** を **GitHub Actions** に切り替えます。
+3. （任意）Google Analytics を設定する場合、**Settings > Secrets and variables > Actions > Variables** タブを開き、**New repository variable** をクリック：
+   - **Name**: `GTM_ID`
+   - **Value**: GA4 測定ID (`G-XXXXXXXXXX`) または GTMコンテナID (`GTM-XXXXXXX`)
+4. `main` ブランチに push すると、GitHub Actions が自動実行されます：
+   - `vars.GTM_ID` が存在する場合、自動的に `config.js` を生成・注入。
+   - Vite による最適化ビルドを実行。
+   - GitHub Pages に成果物を自動デプロイ。
+
+---
+
 ## 🏗️ ファイル構成
 
 ```
 bubblin/
-├── index.html              # HTMLエントリーポイント、レスポンシブUI、モーダル
-├── style.css               # アーケードネオンデザイン、タッチレバー、モバイル対応CSS
-├── vite.config.ts          # Vite設定 (相対パス base: './')
+├── .github/
+│   └── workflows/
+│       └── deploy.yml      # GitHub Actions 自動デプロイ＆GTM_ID注入ワークフロー
+├── index.html              # HTMLエントリーポイント、2画面分割UI、チャットパネル、モーダル
+├── style.css               # アーケードネオンデザイン、対戦/協力レイアウト、チャットUI
+├── vite.config.ts          # Vite設定 (相対パス base: './' & config.js 自動コピー)
 ├── tsconfig.json           # TypeScript厳格モード設定
-├── package.json            # パッケージ情報・ビルドスクリプト
+├── package.json            # パッケージ情報・ビルドスクリプト (Firebase 11.x)
+├── config.example.js       # GTM_ID / FIREBASE_CONFIG の設定テンプレート
 └── src/
-    ├── main.ts             # メインループ、ヒットストップ、状態管理、イベント統合
-    ├── types.ts            # データモデル・型定義
-    ├── constants.ts        # グリッド寸法、カラーパレット、物理定数
+    ├── main.ts             # メインループ、対戦/協力ステートマシン、ヒットストップ、入力管理
+    ├── types.ts            # データモデル、マルチプレイヤー通信型定義、ルームモデル
+    ├── constants.ts        # 六角グリッド幾何、発射台デュアル座標（P1: 160, P2: 320）
+    ├── firebase.ts         # Firebaseシングルトン初期化・Realtime Databaseインスタンス管理
+    ├── network.ts          # ルーム作成/参加、ハートビート、盤面同期、お邪魔バブル通信
+    ├── chat.ts             # リアルタイムチャット管理、絵文字スタンプ、フォーカス制御
+    ├── analytics.ts        # GTM / GA4 (gtag.js) 動的タグ埋め込み
     ├── grid.ts             # 六角グリッド幾何計算、吸着判定、デッドライン判定
     ├── matching.ts         # BFSマッチ3検出、天井連結BFSによる浮遊バブル判定
     ├── physics.ts          # 弾道レイキャスト、壁反射、重力落下、着地花火判定
-    ├── renderer.ts         # 3D球体バブル描画、軌跡ガイド、彗星トレイル、バナー
-    ├── audio.ts            # Web Audio API トランペットファンファーレ＆効果音合成
+    ├── renderer.ts         # 3D球体バブル描画、対戦相手キャンバス描画、協力デュアル発射台
+    ├── audio.ts            # Web Audio API トランペットファンファーレ＆レトロBGM
     ├── stages.ts           # 難易度ブラケット設計に基づく全30ステージデータ
-    └── ui.ts               # HUD更新、タッチレバー操作、クリア・ゲームオーバー画面
+    └── ui.ts               # HUD、マルチプレイモーダル、対戦結果画面、レイアウト切り替え
 ```
 
 ---
