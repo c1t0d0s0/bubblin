@@ -48,7 +48,8 @@ body {
   width: 100%;
   max-width: 480px;
   height: 100%;
-  max-height: 920px;
+  /* header + 720px canvas + footer + borders: no spare space around the canvas */
+  max-height: 812px;
   background: rgba(16, 18, 30, 0.95);
   border-radius: 20px;
   border: 2px solid var(--panel-border);
@@ -240,153 +241,77 @@ body {
   object-fit: contain;
   display: block;
   cursor: crosshair;
+  touch-action: none; /* swipe on the canvas aims instead of scrolling */
 }
 
 /* ================= Controls Panel ================= */
 #controls-panel {
   width: 100%;
-  padding: 10px 14px 12px;
+  padding: 6px 14px 8px;
   background: rgba(14, 16, 28, 0.96);
   border-top: 1px solid var(--panel-border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   z-index: 10;
 }
 
-/* Steering Row */
-.lever-control-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
+/* SWAP button: overlaid on the launcher row, left side of the playfield */
+.screen-view {
+  container-type: size;
 }
 
-.steer-btn {
-  width: 44px;
-  height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, #2b3352 0%, #191f33 100%);
-  border: 1px solid rgba(110, 140, 220, 0.35);
-  color: #a8bce0;
-  font-size: 1.1rem;
-  font-weight: 900;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-  transition: all 0.1s ease;
-}
-
-.steer-btn:active {
-  background: #141829;
-  transform: translateY(2px);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  color: #ffffff;
-}
-
-.lever-track {
+.canvas-stage {
   position: relative;
-  flex: 1;
-  height: 38px;
-  background: linear-gradient(180deg, #101221 0%, #1e2238 100%);
-  border-radius: 19px;
-  border: 2px solid rgba(80, 110, 180, 0.35);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  touch-action: none;
-  cursor: pointer;
+  /* Same 2:3 box the canvas is letterboxed into, so % positions match canvas coordinates */
+  width: min(100cqw, 100cqh * 2 / 3, 480px);
+  aspect-ratio: 2 / 3;
+  container-type: inline-size;
 }
 
-.lever-center-mark {
-  position: absolute;
-  left: 50%;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateX(-50%);
-}
-
-.lever-thumb {
-  position: absolute;
-  top: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #5ae3ff 0%, #0088ff 70%, #004499 100%);
-  border: 2px solid #ffffff;
-  box-shadow: 0 0 10px rgba(0, 150, 255, 0.8), 0 3px 6px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
-  transition: transform 0.05s ease;
-}
-
-/* Action Buttons */
-.action-buttons-row {
-  display: flex;
-  gap: 10px;
+.canvas-stage > canvas {
   width: 100%;
+  height: 100%;
 }
 
-.action-btn {
+.swap-btn {
+  position: absolute;
+  left: 1%;
+  top: 92.8%; /* launcher row (LAUNCHER_Y 660 + chamber offset, of 720) */
+  transform: translateY(-50%);
+  width: 14%;
+  height: 8%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border: none;
-  border-radius: 12px;
+  gap: 0;
+  padding: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #3d4666 0%, #252c42 100%);
+  border: 1px solid rgba(130, 160, 240, 0.4);
+  color: #c0d0f5;
   font-family: inherit;
   font-weight: 800;
+  font-size: 2.6cqw;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  transition: all 0.12s ease;
-  padding: 10px 14px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+  user-select: none;
+  touch-action: none;
 }
 
-.action-btn:active {
-  transform: translateY(2px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-}
-
-.swap-action-btn {
-  flex: 1;
-  background: linear-gradient(180deg, #3d4666 0%, #252c42 100%);
-  border: 1px solid rgba(130, 160, 240, 0.3);
-  color: #c0d0f5;
-  font-size: 0.95rem;
-}
-
-.swap-action-btn:active {
+.swap-btn:active {
   background: #1b2133;
-}
-
-.launch-action-btn {
-  flex: 2.2;
-  background: linear-gradient(180deg, #ff4070 0%, #e60045 100%);
-  border: 2px solid #ff90b0;
-  color: #ffffff;
-  font-size: 1.05rem;
-  letter-spacing: 0.5px;
-  box-shadow: 0 4px 16px rgba(255, 45, 85, 0.5);
-}
-
-.launch-action-btn:active {
-  background: #c20038;
+  transform: translateY(calc(-50% + 2px));
 }
 
 .btn-icon {
-  font-size: 1.2rem;
+  font-size: 4.2cqw;
+  line-height: 1;
 }
 
-.keyboard-tips {
+.copyright {
   font-size: 0.66rem;
   color: var(--text-dim);
   text-align: center;
-  padding-top: 2px;
 }
 
 /* ================= Modals ================= */
@@ -652,7 +577,8 @@ body {
   flex-direction: column;
   width: 320px;
   height: 100%;
-  max-height: 920px;
+  /* header + 720px canvas + footer + borders: no spare space around the canvas */
+  max-height: 812px;
   background: rgba(16, 18, 32, 0.95);
   border-radius: 20px;
   border: 2px solid var(--panel-border);
@@ -1186,9 +1112,5 @@ body {
     max-height: 100%;
     border-radius: 0;
     border: none;
-  }
-
-  .keyboard-tips {
-    display: none;
   }
 }

@@ -52,7 +52,14 @@
         <div id="canvas-container">
           <div id="local-screen" class="screen-view">
             <div id="local-player-badge" class="screen-badge hidden">YOU (P1)</div>
-            <canvas id="game-canvas"></canvas>
+            <div class="canvas-stage">
+              <canvas id="game-canvas"></canvas>
+              <!-- Sits on the launcher row, left side of the playfield -->
+              <button id="swap-btn" class="swap-btn" title="バブルを交代 (↑キー / Wキー)">
+                <span class="btn-icon">🔄</span>
+                <span class="btn-text">SWAP</span>
+              </button>
+            </div>
           </div>
           <div id="opponent-screen" class="screen-view hidden">
             <div id="opponent-player-badge" class="screen-badge rival">RIVAL (P2)</div>
@@ -60,31 +67,8 @@
           </div>
         </div>
 
-        <!-- Bottom Controls for Mobile & Accessibility -->
         <footer id="controls-panel">
-          <div class="lever-control-row">
-            <button id="aim-left-btn" class="steer-btn" aria-label="Aim Left">◀</button>
-            <div id="lever-track" class="lever-track" title="左右にドラッグしてエイム">
-              <div class="lever-center-mark"></div>
-              <div id="lever-thumb" class="lever-thumb"></div>
-            </div>
-            <button id="aim-right-btn" class="steer-btn" aria-label="Aim Right">▶</button>
-          </div>
-
-          <div class="action-buttons-row">
-            <button id="swap-btn" class="action-btn swap-action-btn" title="バブルを交代 (↑キー / Wキー)">
-              <span class="btn-icon">🔄</span>
-              <span class="btn-text">SWAP</span>
-            </button>
-            <button id="launch-btn" class="action-btn launch-action-btn" title="バブルを発射 (スペースキー)">
-              <span class="btn-icon">⚡</span>
-              <span class="btn-text">LAUNCH (発射)</span>
-            </button>
-          </div>
-
-          <div class="keyboard-tips">
-            PC操作: [←/→] または [A/D] で旋回, [SPACE] またはクリックで発射, [↑/W] で交代
-          </div>
+          <div class="copyright">© 2026 c1t0d0s0</div>
         </footer>
       </div>
 

@@ -108,6 +108,8 @@ class BubblinGame {
   private keyLeft: boolean = false;
   private keyRight: boolean = false;
   private isPointerAiming: boolean = false;
+  private lastSwipeX: number | null = null;
+  private swipeStart: { x: number; y: number; time: number } | null = null;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -139,9 +141,6 @@ class BubblinGame {
       onLeaveMultiplayer: () => this.leaveMultiplayer(),
       onNextStage: () => this.nextStage(),
       onRestartGame: () => this.restartGame(),
-      onAimChange: (delta) => this.adjustAim(delta),
-      onAimSet: (angle) => this.setAim(angle),
-      onShoot: () => this.shoot(),
       onSwapBubbles: () => this.swapBubbles()
     });
 
@@ -457,8 +456,9 @@ class BubblinGame {
       }
     });
 
-    // Canvas pointer (mouse & direct touch aim + click to shoot)
-    const handlePointerAim = (e: PointerEvent) => {
+    // Canvas pointer: mouse aims at the cursor and click shoots,
+    // touch aims by swiping left/right (relative movement) and tap shoots
+    const handleMouseAim = (e: PointerEvent) => {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = CANVAS_WIDTH / rect.width;
       const scaleY = CANVAS_HEIGHT / rect.height;
@@ -475,25 +475,59 @@ class BubblinGame {
       }
     };
 
+    const TAP_MAX_MOVE_PX = 10;
+    const TAP_MAX_MS = 350;
+
+    // A full-width swipe sweeps the aim across the whole range (with a little extra gain)
+    const SWIPE_GAIN = 1.3;
+    const handleSwipeAim = (e: PointerEvent) => {
+      if (this.lastSwipeX === null) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const dx = e.clientX - this.lastSwipeX;
+      this.lastSwipeX = e.clientX;
+      this.adjustAim((dx / rect.width) * (MAX_AIM_ANGLE - MIN_AIM_ANGLE) * SWIPE_GAIN);
+    };
+
     this.canvas.addEventListener('pointerdown', (e) => {
       if (this.state !== 'PLAYING') return;
       this.isPointerAiming = true;
-      handlePointerAim(e);
+      if (e.pointerType === 'mouse') {
+        handleMouseAim(e);
+      } else {
+        this.lastSwipeX = e.clientX;
+        this.swipeStart = { x: e.clientX, y: e.clientY, time: performance.now() };
+        try {
+          this.canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }
     });
 
     this.canvas.addEventListener('pointermove', (e) => {
       if (this.state !== 'PLAYING') return;
-      if (e.pointerType === 'mouse' || this.isPointerAiming) {
-        handlePointerAim(e);
+      if (e.pointerType === 'mouse') {
+        handleMouseAim(e);
+      } else if (this.isPointerAiming) {
+        handleSwipeAim(e);
       }
     });
 
     const finishPointerAim = (e: PointerEvent) => {
       if (this.isPointerAiming) {
         this.isPointerAiming = false;
+        this.lastSwipeX = null;
         if (e.pointerType === 'mouse') {
           this.shoot(false);
+        } else if (e.type === 'pointerup' && this.swipeStart) {
+          // Touch: a short, nearly stationary touch is a tap -> shoot
+          const moved = Math.hypot(e.clientX - this.swipeStart.x, e.clientY - this.swipeStart.y);
+          const elapsed = performance.now() - this.swipeStart.time;
+          if (moved < TAP_MAX_MOVE_PX && elapsed < TAP_MAX_MS) {
+            this.shoot(false);
+          }
         }
+        this.swipeStart = null;
       }
     };
 
@@ -503,7 +537,6 @@ class BubblinGame {
 
   public setAim(angle: number): void {
     this.aimAngle = Math.max(MIN_AIM_ANGLE, Math.min(MAX_AIM_ANGLE, angle));
-    this.ui.updateLeverThumb(this.aimAngle);
     networkManager.syncPlayerState({ aimAngle: this.aimAngle });
   }
 

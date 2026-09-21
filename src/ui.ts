@@ -11,9 +11,6 @@ export interface UICallbacks {
   onLeaveMultiplayer?: () => void;
   onNextStage: () => void;
   onRestartGame: () => void;
-  onAimChange: (angleDelta: number) => void;
-  onAimSet: (targetAngle: number) => void;
-  onShoot: () => void;
   onSwapBubbles: () => void;
 }
 
@@ -34,14 +31,8 @@ export class UIManager {
   private gameOverScoreEl: HTMLElement;
 
   // Touch controls
-  private leverThumb: HTMLElement | null;
-  private leverTrack: HTMLElement | null;
-  private launchBtn: HTMLElement | null;
   private swapBtn: HTMLElement | null;
-  private leftAimBtn: HTMLElement | null;
-  private rightAimBtn: HTMLElement | null;
 
-  private isDraggingLever: boolean = false;
   private callbacks: UICallbacks;
 
   constructor(callbacks: UICallbacks) {
@@ -63,12 +54,7 @@ export class UIManager {
     this.clearScoreEl = document.getElementById('clear-score-val')!;
     this.gameOverScoreEl = document.getElementById('game-over-score-val')!;
 
-    this.leverThumb = document.getElementById('lever-thumb');
-    this.leverTrack = document.getElementById('lever-track');
-    this.launchBtn = document.getElementById('launch-btn');
     this.swapBtn = document.getElementById('swap-btn');
-    this.leftAimBtn = document.getElementById('aim-left-btn');
-    this.rightAimBtn = document.getElementById('aim-right-btn');
 
     this.setupEventListeners();
     this.updateAudioButtons();
@@ -208,20 +194,11 @@ export class UIManager {
       this.updateAudioButtons();
     });
 
-    // Launch button
-    this.launchBtn?.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.callbacks.onShoot();
-    });
-
     // Swap button
     this.swapBtn?.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.callbacks.onSwapBubbles();
     });
-
-    // Touch lever
-    this.setupLeverControl();
   }
 
   public showMultiplayerModal(initialRoomCode?: string, isGuest: boolean = false): void {
@@ -354,88 +331,6 @@ export class UIManager {
     }
 
     this.gameOverModal.classList.remove('hidden');
-  }
-
-  private setupLeverControl(): void {
-    // Left / Right aim buttons for continuous steering
-    let aimInterval: number | null = null;
-    const startAim = (delta: number) => {
-      this.callbacks.onAimChange(delta);
-      if (aimInterval) clearInterval(aimInterval);
-      aimInterval = window.setInterval(() => {
-        this.callbacks.onAimChange(delta);
-      }, 30);
-    };
-    const stopAim = () => {
-      if (aimInterval) {
-        clearInterval(aimInterval);
-        aimInterval = null;
-      }
-    };
-
-    this.leftAimBtn?.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      startAim(-0.04);
-    });
-    this.leftAimBtn?.addEventListener('pointerup', stopAim);
-    this.leftAimBtn?.addEventListener('pointerleave', stopAim);
-    this.leftAimBtn?.addEventListener('pointercancel', stopAim);
-
-    this.rightAimBtn?.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      startAim(0.04);
-    });
-    this.rightAimBtn?.addEventListener('pointerup', stopAim);
-    this.rightAimBtn?.addEventListener('pointerleave', stopAim);
-    this.rightAimBtn?.addEventListener('pointercancel', stopAim);
-
-    // Lever slider drag
-    if (this.leverTrack && this.leverThumb) {
-      const handleLeverMove = (clientX: number) => {
-        if (!this.leverTrack) return;
-        const rect = this.leverTrack.getBoundingClientRect();
-        const offsetX = Math.max(0, Math.min(rect.width, clientX - rect.left));
-        const normalized = (offsetX / rect.width) * 2 - 1; // -1 to +1
-        const maxAngle = Math.PI * 0.41;
-        const angle = normalized * maxAngle;
-        this.callbacks.onAimSet(angle);
-        this.updateLeverThumb(angle);
-      };
-
-      this.leverTrack.addEventListener('pointerdown', (e) => {
-        this.isDraggingLever = true;
-        this.leverTrack?.setPointerCapture(e.pointerId);
-        handleLeverMove(e.clientX);
-      });
-
-      this.leverTrack.addEventListener('pointermove', (e) => {
-        if (this.isDraggingLever) {
-          handleLeverMove(e.clientX);
-        }
-      });
-
-      const endLeverDrag = (e: PointerEvent) => {
-        if (this.isDraggingLever) {
-          this.isDraggingLever = false;
-          try {
-            this.leverTrack?.releasePointerCapture(e.pointerId);
-          } catch {
-            // ignore
-          }
-        }
-      };
-
-      this.leverTrack.addEventListener('pointerup', endLeverDrag);
-      this.leverTrack.addEventListener('pointercancel', endLeverDrag);
-    }
-  }
-
-  public updateLeverThumb(currentAngle: number): void {
-    if (!this.leverThumb || !this.leverTrack) return;
-    const maxAngle = Math.PI * 0.41;
-    const normalized = Math.max(-1, Math.min(1, currentAngle / maxAngle));
-    const percent = ((normalized + 1) / 2) * 100;
-    this.leverThumb.style.left = `${percent}%`;
   }
 
   public updateHUD(

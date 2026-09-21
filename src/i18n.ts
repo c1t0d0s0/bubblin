@@ -60,18 +60,6 @@ export const translations = {
     en: 'SE OFF'
   },
   // Controls panel
-  aimLeftAria: {
-    ja: '左へ旋回',
-    en: 'Aim Left'
-  },
-  aimRightAria: {
-    ja: '右へ旋回',
-    en: 'Aim Right'
-  },
-  leverTitle: {
-    ja: '左右にドラッグしてエイム',
-    en: 'Drag left/right to aim'
-  },
   swapBtnTitle: {
     ja: 'バブルを交代 (↑キー / Wキー)',
     en: 'Swap bubble (Up arrow / W key)'
@@ -79,18 +67,6 @@ export const translations = {
   swapBtnText: {
     ja: 'SWAP',
     en: 'SWAP'
-  },
-  launchBtnTitle: {
-    ja: 'バブルを発射 (スペースキー)',
-    en: 'Launch bubble (Spacebar)'
-  },
-  launchBtnText: {
-    ja: 'LAUNCH (発射)',
-    en: 'LAUNCH'
-  },
-  keyboardTips: {
-    ja: 'PC操作: [←/→] または [A/D] で旋回, [SPACE] またはクリックで発射, [↑/W] で交代',
-    en: 'PC Controls: [←/→] or [A/D] to steer, [SPACE] or Click to shoot, [↑/W] to swap'
   },
   // Title Modal
   titleSubtitle: {
@@ -103,15 +79,15 @@ export const translations = {
   },
   rules: {
     ja: [
-      '<strong>照準</strong>: 左右のレバー (PCでは左右キー/マウスドラッグ) で狙いを定める',
-      '<strong>発射</strong>: 発射ボタン (PCではスペースキー/クリック) でバブルを射出',
+      '<strong>照準</strong>: 画面を左右にスワイプ (PCでは左右キー/マウス) で狙いを定める',
+      '<strong>発射</strong>: 画面をタップ (PCではスペースキー/クリック) でバブルを射出',
       '<strong>マッチ3</strong>: 同じ色のバブルを3つ以上つなげると爽快ポップ！',
       '<strong>大量落下</strong>: 天井から切り離されたバブルはまとめて落下して高得点！',
       '<strong>天井降下</strong>: 発射を続けると天井が下がります。デッドラインを超えるとゲームオーバー！'
     ],
     en: [
-      '<strong>Aim</strong>: Steer with bottom lever (or Left/Right keys / Mouse drag)',
-      '<strong>Launch</strong>: Tap the Launch button (or Spacebar / Click) to shoot',
+      '<strong>Aim</strong>: Swipe left/right on the screen (or Left/Right keys / Mouse)',
+      '<strong>Launch</strong>: Tap the screen (or Spacebar / Click) to shoot',
       '<strong>Match 3</strong>: Connect 3 or more bubbles of the same color to pop!',
       '<strong>Mass Drop</strong>: Sever clusters from the ceiling for massive bonus points!',
       '<strong>Ceiling Drop</strong>: The ceiling drops on missed shots. Don\'t cross the deadline!'
@@ -227,33 +203,12 @@ export function applyStaticTranslations(lang: Language = currentLang): void {
   // Title
   document.title = translations.docTitle[lang];
 
-  // Lever & bottom controls
-  const aimLeftBtn = document.getElementById('aim-left-btn');
-  if (aimLeftBtn) aimLeftBtn.setAttribute('aria-label', translations.aimLeftAria[lang]);
-
-  const aimRightBtn = document.getElementById('aim-right-btn');
-  if (aimRightBtn) aimRightBtn.setAttribute('aria-label', translations.aimRightAria[lang]);
-
-  const leverTrack = document.getElementById('lever-track');
-  if (leverTrack) leverTrack.title = translations.leverTitle[lang];
-
+  // Bottom controls
   const swapBtn = document.getElementById('swap-btn');
   if (swapBtn) {
     swapBtn.title = translations.swapBtnTitle[lang];
     const textEl = swapBtn.querySelector('.btn-text');
     if (textEl) textEl.textContent = translations.swapBtnText[lang];
-  }
-
-  const launchBtn = document.getElementById('launch-btn');
-  if (launchBtn) {
-    launchBtn.title = translations.launchBtnTitle[lang];
-    const textEl = launchBtn.querySelector('.btn-text');
-    if (textEl) textEl.textContent = translations.launchBtnText[lang];
-  }
-
-  const keyboardTips = document.querySelector('.keyboard-tips');
-  if (keyboardTips) {
-    keyboardTips.textContent = translations.keyboardTips[lang];
   }
 
   // Title Modal
