@@ -282,13 +282,15 @@ export class GameRenderer {
   }
 
   private drawGrid(grid: GridCell[][], ceilingY: number): void {
+    if (!grid || !Array.isArray(grid)) return;
     for (let r = 0; r < MAX_ROWS; r++) {
+      if (!grid[r] || !Array.isArray(grid[r])) continue;
       const cols = getColsInRow(r);
       for (let c = 0; c < cols; c++) {
         const cell = grid[r][c];
-        if (cell.color !== null) {
+        if (cell && cell.color && cell.color in COLOR_DEFS) {
           const { x, y } = getHexPosition(r, c, ceilingY);
-          this.drawBubble(x, y, cell.color, BUBBLE_RADIUS, cell.animScale, 0);
+          this.drawBubble(x, y, cell.color, BUBBLE_RADIUS, cell.animScale || 1, 0);
         }
       }
     }
@@ -330,7 +332,7 @@ export class GameRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    const def = COLOR_DEFS[color];
+    const def = (color && color in COLOR_DEFS) ? COLOR_DEFS[color] : COLOR_DEFS.red;
 
     // Draw animated dotted path
     ctx.setLineDash([6, 8]);
@@ -394,6 +396,10 @@ export class GameRenderer {
     rotation: number = 0,
     alpha: number = 1
   ): void {
+    if (!color || !(color in COLOR_DEFS)) return;
+    const def = COLOR_DEFS[color];
+    if (!def || !def.rgb) return;
+
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -406,7 +412,6 @@ export class GameRenderer {
       ctx.rotate(rotation);
     }
 
-    const def = COLOR_DEFS[color];
     const r = radius;
     const [cr, cg, cb] = def.rgb;
 
@@ -673,10 +678,15 @@ export class GameRenderer {
   private drawDroppingBubbles(droppingBubbles: DroppingBubble[]): void {
     const ctx = this.ctx;
     for (const b of droppingBubbles) {
+      if (!b || !b.color || !(b.color in COLOR_DEFS)) continue;
       // 1. Draw glowing comet trails from history
       if (b.history && b.history.length > 0) {
         ctx.save();
         const def = COLOR_DEFS[b.color];
+        if (!def) {
+          ctx.restore();
+          continue;
+        }
         for (let i = 0; i < b.history.length; i++) {
           const h = b.history[i];
           const trailProgress = (i + 1) / (b.history.length + 1);

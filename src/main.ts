@@ -586,7 +586,7 @@ class BubblinGame {
   }
 
   private triggerPopParticles(x: number, y: number, color: BubbleColor): void {
-    const def = COLOR_DEFS[color];
+    const def = (color && color in COLOR_DEFS) ? COLOR_DEFS[color] : COLOR_DEFS.red;
 
     // Ring shockwave
     this.particles.push({
@@ -1032,8 +1032,12 @@ class BubblinGame {
       this.opponentRenderer.render({
         grid: this.opponentGrid,
         ceilingY: this.opponentState?.ceilingY || 0,
-        currentBubble: this.opponentState?.currentBubble || 'blue',
-        nextBubble: this.opponentState?.nextBubble || 'green',
+        currentBubble: (this.opponentState?.currentBubble && this.opponentState.currentBubble in COLOR_DEFS)
+          ? this.opponentState.currentBubble
+          : 'blue',
+        nextBubble: (this.opponentState?.nextBubble && this.opponentState.nextBubble in COLOR_DEFS)
+          ? this.opponentState.nextBubble
+          : 'green',
         aimAngle: this.opponentState?.aimAngle || 0,
         projectile: this.opponentState?.projectile
           ? { ...this.opponentState.projectile, radius: BUBBLE_RADIUS }
@@ -1051,16 +1055,26 @@ class BubblinGame {
   }
 }
 
-function serializeGrid(grid: GridCell[][]): (BubbleColor | null)[][] {
-  return grid.map((row) => row.map((cell) => cell.color));
+function serializeGrid(grid: GridCell[][]): (BubbleColor | '')[][] {
+  return grid.map((row) => row.map((cell) => cell.color || ''));
 }
 
-function deserializeGrid(data: (BubbleColor | null)[][], targetGrid: GridCell[][]): void {
-  for (let r = 0; r < data.length; r++) {
-    if (!targetGrid[r] || !data[r]) continue;
-    for (let c = 0; c < data[r].length; c++) {
-      if (targetGrid[r][c]) {
-        targetGrid[r][c].color = data[r][c];
+function deserializeGrid(data: any, targetGrid: GridCell[][]): void {
+  if (!data) return;
+  for (let r = 0; r < targetGrid.length; r++) {
+    const rowData = data[r];
+    if (!rowData) {
+      for (let c = 0; c < targetGrid[r].length; c++) {
+        targetGrid[r][c].color = null;
+      }
+      continue;
+    }
+    for (let c = 0; c < targetGrid[r].length; c++) {
+      const colVal = rowData[c];
+      if (colVal && typeof colVal === 'string' && colVal in COLOR_DEFS) {
+        targetGrid[r][c].color = colVal as BubbleColor;
+      } else {
+        targetGrid[r][c].color = null;
       }
     }
   }

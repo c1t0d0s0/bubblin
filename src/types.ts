@@ -94,7 +94,7 @@ export interface PlayerNetworkState {
   combo: number;
   ceilingY: number;
   shotsBeforeDrop: number;
-  grid: (BubbleColor | null)[][];
+  grid: (BubbleColor | null | string)[][];
   isDead: boolean;
   isCleared: boolean;
   attackPending: number;
