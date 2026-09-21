@@ -135,7 +135,9 @@ class BgmSequencer {
     this.isMuted = isMuted;
 
     this.masterGain = ctx.createGain();
-    this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.14, ctx.currentTime);
+    const initVol = this.isMuted ? 0 : 0.14;
+    this.masterGain.gain.setValueAtTime(initVol, ctx.currentTime);
+    this.masterGain.gain.value = initVol;
     this.masterGain.connect(ctx.destination);
   }
 
@@ -171,23 +173,44 @@ class BgmSequencer {
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
-    const targetVol = this.isMuted ? 0 : (this.isDucked ? 0.025 : 0.14);
-    this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.masterGain.gain.linearRampToValueAtTime(targetVol, this.ctx.currentTime + 0.1);
+    const now = this.ctx.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+
+    if (this.isMuted) {
+      // Immediate absolute silence
+      this.masterGain.gain.setValueAtTime(0, now);
+      this.masterGain.gain.value = 0;
+    } else {
+      const targetVol = this.isDucked ? 0.025 : 0.14;
+      this.masterGain.gain.setValueAtTime(0, now);
+      this.masterGain.gain.linearRampToValueAtTime(targetVol, now + 0.1);
+    }
   }
 
   public setDucking(ducked: boolean): void {
     this.isDucked = ducked;
-    if (this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    if (this.isMuted) {
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(0, now);
+      this.masterGain.gain.value = 0;
+      return;
+    }
+
     const targetVol = this.isDucked ? 0.025 : 0.14;
-    this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.masterGain.gain.linearRampToValueAtTime(targetVol, this.ctx.currentTime + 0.25);
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.linearRampToValueAtTime(targetVol, now + 0.25);
   }
 
   private scheduler(): void {
     // Schedule ahead up to 100ms
     while (this.nextNoteTime < this.ctx.currentTime + 0.1) {
-      this.scheduleStep(this.currentStep, this.nextNoteTime);
+      // If muted, advance step clock in sync but don't schedule audio nodes
+      if (!this.isMuted) {
+        this.scheduleStep(this.currentStep, this.nextNoteTime);
+      }
       this.nextNoteTime += this.secondsPerStep;
       this.currentStep = (this.currentStep + 1) % 256;
     }
@@ -438,6 +461,7 @@ class SoundManager {
   public startBgm(): void {
     const ctx = this.initCtx();
     if (!ctx || !this.bgmSequencer) return;
+    this.bgmSequencer.setMuted(this.isBgmMuted);
     this.bgmSequencer.start();
   }
 

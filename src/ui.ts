@@ -1,4 +1,5 @@
 import { soundManager } from './audio';
+import { applyStaticTranslations, currentLang, translations } from './i18n';
 
 export interface UICallbacks {
   onStartGame: () => void;
@@ -38,6 +39,9 @@ export class UIManager {
 
   constructor(callbacks: UICallbacks) {
     this.callbacks = callbacks;
+
+    // Apply translations according to browser language
+    applyStaticTranslations(currentLang);
 
     this.scoreEl = document.getElementById('score-value')!;
     this.highScoreEl = document.getElementById('highscore-value')!;
@@ -213,19 +217,23 @@ export class UIManager {
     const nextBtn = document.getElementById('next-stage-btn') as HTMLElement;
 
     if (isFinalStage) {
-      if (stageTitle) stageTitle.textContent = `ALL 30 STAGES CLEARED! 🏆`;
-      if (cheer) cheer.textContent = `CONGRATULATIONS! 全30ステージ完全制覇！お見事です！`;
-      if (nextBtn) nextBtn.textContent = `LOOP MODE (★難易度UP) ➔`;
+      if (stageTitle) stageTitle.textContent = translations.allStagesClearedTitle[currentLang];
+      if (cheer) cheer.textContent = translations.clearCheerFinal[currentLang];
+      if (nextBtn) nextBtn.textContent = translations.loopModeBtn[currentLang];
     } else {
-      if (stageTitle) stageTitle.textContent = `${stageName} CLEARED!`;
-      if (cheer) cheer.textContent = `EXCELLENT! 素晴らしいプレイ！`;
-      if (nextBtn) nextBtn.textContent = `NEXT STAGE ➔`;
+      if (stageTitle) stageTitle.textContent = `${stageName}${translations.stageClearedSuffix[currentLang]}`;
+      if (cheer) cheer.textContent = translations.clearCheerNormal[currentLang];
+      if (nextBtn) nextBtn.textContent = translations.nextStageBtn[currentLang];
     }
     this.stageClearModal.classList.remove('hidden');
   }
 
   public showGameOver(score: number, highScore: number): void {
     this.gameOverScoreEl.innerHTML = `Score: <strong>${score.toLocaleString()}</strong><br>High Score: <strong>${highScore.toLocaleString()}</strong>`;
+    const gameOverSub = document.querySelector('.gameover-sub');
+    if (gameOverSub) gameOverSub.textContent = translations.gameOverSub[currentLang];
+    const restartBtn = document.getElementById('restart-btn');
+    if (restartBtn) restartBtn.textContent = translations.restartBtn[currentLang];
     this.gameOverModal.classList.remove('hidden');
   }
 
@@ -235,15 +243,21 @@ export class UIManager {
 
     if (this.bgmBtn) {
       this.bgmBtn.innerHTML = isBgmMuted ? '🔇' : '🎵';
-      this.bgmBtn.title = isBgmMuted ? 'BGM ON' : 'BGM OFF';
-      this.bgmBtn.setAttribute('aria-label', isBgmMuted ? 'Unmute BGM' : 'Mute BGM');
+      this.bgmBtn.title = isBgmMuted ? translations.bgmOn[currentLang] : translations.bgmOff[currentLang];
+      this.bgmBtn.setAttribute(
+        'aria-label',
+        isBgmMuted ? translations.bgmOn[currentLang] : translations.bgmOff[currentLang]
+      );
       this.bgmBtn.classList.toggle('muted', isBgmMuted);
     }
 
     if (this.seBtn) {
       this.seBtn.innerHTML = isSeMuted ? '🔈' : '🔊';
-      this.seBtn.title = isSeMuted ? 'SE ON' : 'SE OFF';
-      this.seBtn.setAttribute('aria-label', isSeMuted ? 'Unmute Sound Effects' : 'Mute Sound Effects');
+      this.seBtn.title = isSeMuted ? translations.seOn[currentLang] : translations.seOff[currentLang];
+      this.seBtn.setAttribute(
+        'aria-label',
+        isSeMuted ? translations.seOn[currentLang] : translations.seOff[currentLang]
+      );
       this.seBtn.classList.toggle('muted', isSeMuted);
     }
   }
