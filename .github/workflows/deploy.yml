@@ -29,18 +29,10 @@ jobs:
           cache: 'npm'
 
       - name: Inject GTM_ID and Firebase Config from repository variables
-        shell: bash
-        run: |
-          # If vars.GTM_ID is defined in repository variables, generate/inject config.js
-          if [ -n "${{ vars.GTM_ID }}" ]; then
-            echo "Injecting GTM_ID from repository variable vars.GTM_ID..."
-            echo "const GTM_ID = '${{ vars.GTM_ID }}';" > config.js
-          fi
-          # If vars.FIREBASE_CONFIG is defined in repository variables or secrets, append to config.js
-          if [ -n "${{ vars.FIREBASE_CONFIG }}" ]; then
-            echo "Injecting FIREBASE_CONFIG from repository variables..."
-            echo "const FIREBASE_CONFIG = ${{ vars.FIREBASE_CONFIG }};" >> config.js
-          fi
+        env:
+          VARS_GTM_ID: ${{ vars.GTM_ID }}
+          VARS_FIREBASE_CONFIG: ${{ vars.FIREBASE_CONFIG }}
+        run: node scripts/generate-config.cjs
 
       - name: Install dependencies
         run: npm ci

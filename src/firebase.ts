@@ -1,10 +1,11 @@
-import { FirebaseApp, initializeApp } from 'firebase/app';
+import { FirebaseApp, initializeApp, getApps, getApp } from 'firebase/app';
 import { Database, getDatabase } from 'firebase/database';
 import { FirebaseConfig } from './types';
 
 declare global {
   interface Window {
     FIREBASE_CONFIG?: FirebaseConfig;
+    firebaseConfig?: FirebaseConfig;
   }
 }
 
@@ -15,22 +16,68 @@ let currentConfig: FirebaseConfig | null = null;
 const STORAGE_KEY = 'bubblin_firebase_config';
 
 /**
- * Parses FIREBASE_CONFIG object from text (e.g. config.js source).
+ * Extracts a single property from text even if keys/values are unquoted.
+ */
+function extractConfigProperty(text: string, key: string): string | undefined {
+  const regex = new RegExp(`["']?${key}["']?\\s*:\\s*(?:"([^"]*)"|'([^']*)'|([^,\\s}\\n]+))`, 'i');
+  const match = text.match(regex);
+  if (match) {
+    const val = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+    return val.length > 0 ? val : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Parses FIREBASE_CONFIG / firebaseConfig object from text (e.g. config.js source).
+ * Resilient to:
+ * - Standard JS object literal (eval)
+ * - Pure JSON format
+ * - Unquoted or quote-stripped key/values (regex extraction fallback)
  */
 export function parseFirebaseConfigFromText(text: string): FirebaseConfig | null {
+  if (!text) return null;
+
+  // 1. Try matching object literal and evaluating via Function
   try {
-    // Matches: const FIREBASE_CONFIG = { ... }; or window.FIREBASE_CONFIG = { ... };
-    const match = text.match(/(?:(?:export\s+)?(?:const|let|var)\s+|window\.)?FIREBASE_CONFIG\s*=\s*({[\s\S]*?});/);
+    const match = text.match(/(?:(?:export\s+)?(?:const|let|var)\s+|window\.)?(?:FIREBASE_CONFIG|firebaseConfig)\s*=\s*({[\s\S]*?});?/i);
     if (match && match[1]) {
-      // Safely evaluate object literal
       const config = new Function(`return (${match[1]});`)();
-      if (config && config.apiKey && config.databaseURL) {
+      if (config && (config.apiKey || config.databaseURL)) {
         return config as FirebaseConfig;
       }
     }
-  } catch (err) {
-    console.warn('[Firebase] Failed to parse config from text:', err);
+  } catch {
+    // If evaluation fails (e.g. unquoted values, syntax errors), fall through to regex extraction
   }
+
+  // 2. Try JSON parsing
+  try {
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      const json = JSON.parse(trimmed);
+      if (json && (json.apiKey || json.databaseURL)) {
+        return json as FirebaseConfig;
+      }
+    }
+  } catch {}
+
+  // 3. Robust regex fallback for unquoted or quote-stripped config objects
+  const apiKey = extractConfigProperty(text, 'apiKey');
+  const databaseURL = extractConfigProperty(text, 'databaseURL');
+  if (apiKey || databaseURL) {
+    return {
+      apiKey: apiKey || '',
+      databaseURL: databaseURL || '',
+      authDomain: extractConfigProperty(text, 'authDomain'),
+      projectId: extractConfigProperty(text, 'projectId') || 'bubblin-game',
+      storageBucket: extractConfigProperty(text, 'storageBucket'),
+      messagingSenderId: extractConfigProperty(text, 'messagingSenderId'),
+      appId: extractConfigProperty(text, 'appId'),
+      measurementId: extractConfigProperty(text, 'measurementId')
+    };
+  }
+
   return null;
 }
 
@@ -44,15 +91,20 @@ export function parseFirebaseConfigFromText(text: string): FirebaseConfig | null
 export async function loadFirebaseConfig(): Promise<FirebaseConfig | null> {
   if (currentConfig) return currentConfig;
 
-  // 1. Check window.FIREBASE_CONFIG
-  if (typeof window !== 'undefined' && window.FIREBASE_CONFIG?.databaseURL) {
-    currentConfig = window.FIREBASE_CONFIG;
-    return currentConfig;
+  // 1. Check window.FIREBASE_CONFIG or window.firebaseConfig
+  if (typeof window !== 'undefined') {
+    const winConfig = window.FIREBASE_CONFIG || window.firebaseConfig;
+    if (winConfig?.databaseURL) {
+      currentConfig = winConfig;
+      return currentConfig;
+    }
   }
 
   // 2. Check top-level lexical scope
   try {
-    const evalConfig = new Function("return typeof FIREBASE_CONFIG !== 'undefined' ? FIREBASE_CONFIG : null")();
+    const evalConfig = new Function(
+      "return typeof FIREBASE_CONFIG !== 'undefined' ? FIREBASE_CONFIG : (typeof firebaseConfig !== 'undefined' ? firebaseConfig : null)"
+    )();
     if (evalConfig && evalConfig.databaseURL) {
       currentConfig = evalConfig as FirebaseConfig;
       return currentConfig;
@@ -114,7 +166,7 @@ export async function initFirebase(): Promise<Database | null> {
   }
 
   try {
-    firebaseApp = initializeApp(config);
+    firebaseApp = getApps().length === 0 ? initializeApp(config) : getApp();
     database = getDatabase(firebaseApp);
     console.log('[Firebase] Realtime Database initialized successfully:', config.databaseURL);
     return database;
