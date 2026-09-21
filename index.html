@@ -254,9 +254,14 @@
           <h2 id="game-over-title">GAME OVER</h2>
           <p id="game-over-score-val" class="score-display">Score: 0</p>
           <p id="game-over-sub-text" class="gameover-sub">バブルがデッドラインを超えてしまいました！</p>
-          <button id="restart-btn" class="modal-btn restart-btn">
-            TRY AGAIN 🔄
-          </button>
+          <div class="modal-buttons-column">
+            <button type="button" id="restart-btn" class="modal-btn restart-btn">
+              TRY AGAIN 🔄
+            </button>
+            <button type="button" id="leave-game-btn" class="modal-btn cancel-btn hidden">
+              🏠 タイトルに戻る (EXIT)
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -7,6 +7,8 @@ export interface UICallbacks {
   onStartGame: () => void;
   onStartMultiplayer: (mode: PlayMode, isHost: boolean, roomId?: string, playerName?: string, isLocal?: boolean) => void;
   onCancelWaiting?: () => void;
+  onRequestRematch?: () => void;
+  onLeaveMultiplayer?: () => void;
   onNextStage: () => void;
   onRestartGame: () => void;
   onAimChange: (angleDelta: number) => void;
@@ -16,6 +18,7 @@ export interface UICallbacks {
 }
 
 export class UIManager {
+  private isVersusResult: boolean = false;
   private scoreEl: HTMLElement;
   private highScoreEl: HTMLElement;
   private stageEl: HTMLElement;
@@ -176,8 +179,22 @@ export class UIManager {
     });
 
     document.getElementById('restart-btn')?.addEventListener('click', () => {
+      if (this.isVersusResult) {
+        const restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
+        if (restartBtn) {
+          restartBtn.textContent = '⏳ 相手の準備を待機中... (1/2)';
+          restartBtn.disabled = true;
+        }
+        this.callbacks.onRequestRematch?.();
+      } else {
+        this.gameOverModal.classList.add('hidden');
+        this.callbacks.onRestartGame();
+      }
+    });
+
+    document.getElementById('leave-game-btn')?.addEventListener('click', () => {
       this.gameOverModal.classList.add('hidden');
-      this.callbacks.onRestartGame();
+      this.callbacks.onLeaveMultiplayer?.();
     });
 
     // Audio buttons
@@ -300,10 +317,13 @@ export class UIManager {
   }
 
   public showVersusResult(isWinner: boolean, myScore: number, rivalScore: number): void {
+    this.isVersusResult = true;
     const titleEl = document.getElementById('game-over-title');
     const scoreEl = document.getElementById('game-over-score-val');
     const subEl = document.getElementById('game-over-sub-text');
     const iconEl = document.querySelector('#game-over-modal .modal-icon');
+    const restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
+    const leaveBtn = document.getElementById('leave-game-btn');
 
     if (isWinner) {
       if (titleEl) {
@@ -323,6 +343,14 @@ export class UIManager {
 
     if (scoreEl) {
       scoreEl.innerHTML = `YOUR SCORE: <strong>${myScore.toLocaleString()}</strong><br>RIVAL SCORE: <strong>${rivalScore.toLocaleString()}</strong>`;
+    }
+
+    if (restartBtn) {
+      restartBtn.textContent = '再戦する (REMATCH) 🔄';
+      restartBtn.disabled = false;
+    }
+    if (leaveBtn) {
+      leaveBtn.classList.remove('hidden');
     }
 
     this.gameOverModal.classList.remove('hidden');
@@ -451,12 +479,34 @@ export class UIManager {
   }
 
   public showGameOver(score: number, highScore: number): void {
+    this.isVersusResult = false;
     this.gameOverScoreEl.innerHTML = `Score: <strong>${score.toLocaleString()}</strong><br>High Score: <strong>${highScore.toLocaleString()}</strong>`;
     const gameOverSub = document.querySelector('.gameover-sub');
     if (gameOverSub) gameOverSub.textContent = translations.gameOverSub[currentLang];
-    const restartBtn = document.getElementById('restart-btn');
-    if (restartBtn) restartBtn.textContent = translations.restartBtn[currentLang];
+    const restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
+    if (restartBtn) {
+      restartBtn.textContent = translations.restartBtn[currentLang];
+      restartBtn.disabled = false;
+    }
+    const leaveBtn = document.getElementById('leave-game-btn');
+    if (leaveBtn) leaveBtn.classList.add('hidden');
     this.gameOverModal.classList.remove('hidden');
+  }
+
+  public updateRematchStatus(text: string, disabled: boolean = true): void {
+    const restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
+    if (restartBtn) {
+      restartBtn.textContent = text;
+      restartBtn.disabled = disabled;
+    }
+  }
+
+  public hideGameOverModal(): void {
+    this.gameOverModal.classList.add('hidden');
+  }
+
+  public showTitleModal(): void {
+    this.titleModal.classList.remove('hidden');
   }
 
   private updateAudioButtons(): void {

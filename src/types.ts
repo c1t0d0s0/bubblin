@@ -108,6 +108,11 @@ export interface RoomData {
   hostId: string;
   stageId: number;
   createdAt: number;
+  round?: number;
+  rematch?: {
+    p1?: boolean;
+    p2?: boolean;
+  };
   p1: PlayerNetworkState;
   p2?: PlayerNetworkState;
 }

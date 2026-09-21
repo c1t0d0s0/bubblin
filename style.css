@@ -231,7 +231,8 @@ body {
   overflow: hidden;
 }
 
-#game-canvas {
+#game-canvas,
+#opponent-canvas {
   width: 100%;
   height: 100%;
   max-width: 480px;
@@ -565,7 +566,8 @@ body {
   box-shadow: 0 6px 20px rgba(255, 51, 102, 0.4);
 }
 
-.title-buttons-row {
+.title-buttons-row,
+.modal-buttons-column {
   display: flex;
   flex-direction: column;
   gap: 10px;

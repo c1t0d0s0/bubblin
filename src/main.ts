@@ -132,6 +132,8 @@ class BubblinGame {
       onStartMultiplayer: (mode, isHost, roomId, name, isLocal) =>
         this.startMultiplayer(mode, isHost, roomId, name, isLocal),
       onCancelWaiting: () => this.cancelWaiting(),
+      onRequestRematch: () => this.requestRematch(),
+      onLeaveMultiplayer: () => this.leaveMultiplayer(),
       onNextStage: () => this.nextStage(),
       onRestartGame: () => this.restartGame(),
       onAimChange: (delta) => this.adjustAim(delta),
@@ -158,42 +160,64 @@ class BubblinGame {
     this.ui.hideWaitingPanel();
   }
 
+  public async requestRematch(): Promise<void> {
+    if (this.isLocal2P) {
+      this.ui.hideGameOverModal();
+      this.startRematchGame();
+      return;
+    }
+    await networkManager.requestRematch();
+  }
+
+  public async leaveMultiplayer(): Promise<void> {
+    await networkManager.leaveRoom();
+    this.state = 'TITLE';
+    this.chatManager.setVisible(false);
+    this.ui.setVersusLayout(false);
+    this.ui.hideGameOverModal();
+    this.ui.showTitleModal();
+  }
+
+  public resizeCanvas(): void {
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = CANVAS_WIDTH * dpr;
+    this.canvas.height = CANVAS_HEIGHT * dpr;
+    this.ctx.resetTransform?.();
+    this.ctx.scale(dpr, dpr);
+
+    if (this.opponentCanvas && this.opponentCtx) {
+      this.opponentCanvas.width = CANVAS_WIDTH * dpr;
+      this.opponentCanvas.height = CANVAS_HEIGHT * dpr;
+      this.opponentCtx.resetTransform?.();
+      this.opponentCtx.scale(dpr, dpr);
+    }
+  }
+
   private setupCanvasSize(): void {
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      this.canvas.width = CANVAS_WIDTH * dpr;
-      this.canvas.height = CANVAS_HEIGHT * dpr;
-      this.ctx.resetTransform?.();
-      this.ctx.scale(dpr, dpr);
-
-      if (this.opponentCanvas && this.opponentCtx) {
-        this.opponentCanvas.width = CANVAS_WIDTH * dpr;
-        this.opponentCanvas.height = CANVAS_HEIGHT * dpr;
-        this.opponentCtx.resetTransform?.();
-        this.opponentCtx.scale(dpr, dpr);
-      }
-    };
-
-    window.addEventListener('resize', resize);
-    resize();
+    window.addEventListener('resize', () => this.resizeCanvas());
+    this.resizeCanvas();
   }
 
   private setupNetworkListeners(): void {
     networkManager.onOpponentState((state) => {
+      if (this.playMode !== 'VERSUS') return;
+
       this.opponentState = state;
       if (state.grid && state.grid.length > 0) {
         deserializeGrid(state.grid, this.opponentGrid);
       }
-      if (state.isDead && this.state === 'PLAYING' && this.playMode === 'VERSUS') {
-        this.state = 'STAGE_CLEAR';
-        soundManager.playStageClear();
-        this.triggerConfetti();
-        this.ui.showVersusResult(true, this.score, state.score);
-      }
-      if (state.isCleared && this.state === 'PLAYING' && this.playMode === 'VERSUS') {
-        this.state = 'GAME_OVER';
-        soundManager.playGameOver();
-        this.ui.showVersusResult(false, this.score, state.score);
+
+      if (this.state === 'PLAYING') {
+        if (state.isDead) {
+          this.state = 'STAGE_CLEAR';
+          soundManager.playStageClear();
+          this.triggerConfetti();
+          this.ui.showVersusResult(true, this.score, state.score);
+        } else if (state.isCleared) {
+          this.state = 'GAME_OVER';
+          soundManager.playGameOver();
+          this.ui.showVersusResult(false, this.score, state.score);
+        }
       }
     });
 
@@ -206,6 +230,18 @@ class BubblinGame {
         this.ui.hideMultiplayerModal();
         this.startMultiplayerGame();
       }
+    });
+
+    networkManager.onRematch(() => {
+      this.ui.updateRematchStatus('✨ 再戦を開始します！', true);
+      setTimeout(() => {
+        this.ui.hideGameOverModal();
+        this.startRematchGame();
+      }, 350);
+    });
+
+    networkManager.onOpponentLeft((name) => {
+      this.ui.updateRematchStatus(`${name || '相手'}が退出しました`, true);
     });
   }
 
@@ -272,10 +308,24 @@ class BubblinGame {
     }
   }
 
-  private startMultiplayerGame(): void {
+  public startMultiplayerGame(): void {
     this.state = 'PLAYING';
     this.score = 0;
     this.combo = 0;
+    this.ceilingY = 0;
+    this.targetCeilingY = 0;
+    this.shotsBeforeDrop = 8;
+    this.maxShotsBeforeDrop = 8;
+    this.warningTime = 0;
+    this.projectile = null;
+    this.p2Projectile = null;
+    this.confettiList = [];
+    this.scorePopups = [];
+    this.droppingBubbles = [];
+    this.particles = [];
+
+    // Clear opponent state from any previous match
+    this.opponentState = null;
     this.opponentGrid = createEmptyGrid();
     this.loadStage(1);
 
@@ -296,6 +346,7 @@ class BubblinGame {
       this.p2NextBubbleColor = this.pickNextBubbleColor();
     }
 
+    this.resizeCanvas();
     soundManager.startBgm();
     soundManager.setBgmDucking(false);
 
@@ -313,6 +364,10 @@ class BubblinGame {
       isDead: false,
       isCleared: false
     }, true);
+  }
+
+  public startRematchGame(): void {
+    this.startMultiplayerGame();
   }
 
   private setupInputs(): void {

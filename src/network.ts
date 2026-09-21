@@ -11,7 +11,25 @@ import {
   update
 } from 'firebase/database';
 import { initFirebase } from './firebase';
-import { ChatMessage, PlayerNetworkState, PlayerSlot, PlayMode, RoomData, RoomStatus } from './types';
+import { BubbleColor, ChatMessage, PlayerNetworkState, PlayerSlot, PlayMode, RoomData, RoomStatus } from './types';
+import { getStage } from './stages';
+import { MAX_ROWS } from './constants';
+import { getColsInRow } from './grid';
+
+function getInitialStageGrid(): (BubbleColor | '')[][] {
+  const stage = getStage(1);
+  const grid: (BubbleColor | '')[][] = [];
+  for (let r = 0; r < MAX_ROWS; r++) {
+    const cols = getColsInRow(r);
+    const row: (BubbleColor | '')[] = [];
+    for (let c = 0; c < cols; c++) {
+      const colVal = stage.layout[r]?.[c];
+      row.push(colVal || '');
+    }
+    grid.push(row);
+  }
+  return grid;
+}
 
 export class NetworkManager {
   private db: Database | null = null;
@@ -26,6 +44,10 @@ export class NetworkManager {
   private roomStatusCallback?: (status: RoomStatus, mode: PlayMode, stageId: number) => void;
   private chatCallback?: (msg: ChatMessage) => void;
   private attackCallback?: (count: number) => void;
+  private rematchCallback?: () => void;
+  private opponentLeftCallback?: (name: string) => void;
+
+  private currentRound: number = 1;
 
   private lastSyncTime: number = 0;
   private syncThrottleMs: number = 40; // ~25 FPS network tick for continuous aim sync
@@ -112,6 +134,7 @@ export class NetworkManager {
       ? customRoomId.trim().toUpperCase()
       : this.generateRoomCode();
     this.currentRoomId = roomId;
+    this.currentRound = 1;
 
     const initialPlayerState: PlayerNetworkState = {
       id: this.myPlayerId,
@@ -188,6 +211,7 @@ export class NetworkManager {
       }
 
       this.playMode = data.mode;
+      this.currentRound = data.round || 1;
 
       const p2State: PlayerNetworkState = {
         id: this.myPlayerId,
@@ -246,11 +270,55 @@ export class NetworkManager {
         this.roomStatusCallback(room.status, room.mode, room.stageId);
       }
 
+      // Check rematch state
+      if (room.rematch && room.rematch.p1 && room.rematch.p2) {
+        if (this.mySlot === 'p1') {
+          const initialGrid = getInitialStageGrid();
+          const nextRound = (room.round || 1) + 1;
+          update(ref(this.db!, `rooms/${roomId}`), {
+            round: nextRound,
+            rematch: null,
+            status: 'PLAYING',
+            'p1/isDead': false,
+            'p1/isCleared': false,
+            'p1/ready': true,
+            'p1/score': 0,
+            'p1/combo': 0,
+            'p1/ceilingY': 0,
+            'p1/shotsBeforeDrop': 8,
+            'p1/projectile': null,
+            'p1/grid': initialGrid,
+            'p2/isDead': false,
+            'p2/isCleared': false,
+            'p2/ready': true,
+            'p2/score': 0,
+            'p2/combo': 0,
+            'p2/ceilingY': 0,
+            'p2/shotsBeforeDrop': 8,
+            'p2/projectile': null,
+            'p2/grid': initialGrid
+          }).catch((err) => console.warn('[Network] Rematch reset error:', err));
+        }
+      }
+
+      // Check if round advanced!
+      const roomRound = room.round || 1;
+      if (roomRound > this.currentRound) {
+        this.currentRound = roomRound;
+        if (this.rematchCallback) {
+          this.rematchCallback();
+        }
+      }
+
       // Check opponent state
       const opponentSlot = this.getOpponentSlot();
       const opp = room[opponentSlot];
       if (opp && this.opponentCallback) {
         this.opponentCallback(opp);
+      } else if (this.currentRoomId && !opp && room.status !== 'WAITING') {
+        if (this.opponentLeftCallback) {
+          this.opponentLeftCallback(opponentSlot === 'p1' ? 'Host' : 'Guest');
+        }
       }
 
       // Check if I received any attacks
@@ -385,6 +453,30 @@ export class NetworkManager {
 
   public onAttack(callback: (count: number) => void): void {
     this.attackCallback = callback;
+  }
+
+  public onRematch(callback: () => void): void {
+    this.rematchCallback = callback;
+  }
+
+  public onOpponentLeft(callback: (name: string) => void): void {
+    this.opponentLeftCallback = callback;
+  }
+
+  /**
+   * Requests a rematch. When both players request rematch, the game restarts simultaneously.
+   */
+  public async requestRematch(): Promise<void> {
+    if (this.isLocalMode || !this.db || !this.currentRoomId) {
+      if (this.rematchCallback) {
+        setTimeout(() => this.rematchCallback?.(), 200);
+      }
+      return;
+    }
+
+    const rematchSlotRef = ref(this.db, `rooms/${this.currentRoomId}/rematch/${this.mySlot}`);
+    await set(rematchSlotRef, true);
+    this.sendSystemChatMessage(`${this.myPlayerName} が再戦を希望しています！🔄`);
   }
 
   /**
