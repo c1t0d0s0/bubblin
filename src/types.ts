@@ -89,7 +89,7 @@ export interface PlayerNetworkState {
   aimAngle: number;
   currentBubble: BubbleColor;
   nextBubble: BubbleColor;
-  projectile: { x: number; y: number; vx: number; vy: number; color: BubbleColor } | null;
+  projectile: { id?: number; x: number; y: number; vx: number; vy: number; color: BubbleColor } | null;
   score: number;
   combo: number;
   ceilingY: number;

@@ -86,6 +86,9 @@ class BubblinGame {
   private opponentRenderer: GameRenderer | null = null;
   private opponentState: PlayerNetworkState | null = null;
   private opponentGrid: GridCell[][] = [];
+  private opponentProjectile: Projectile | null = null;
+  private lastOpponentShotId: number = 0;
+  private opponentParticles: Particle[] = [];
 
   // P2 controls (Co-op / Local)
   private p2AimAngle: number = 0;
@@ -204,7 +207,23 @@ class BubblinGame {
 
       this.opponentState = state;
       if (state.grid && state.grid.length > 0) {
-        deserializeGrid(state.grid, this.opponentGrid);
+        deserializeGrid(state.grid, this.opponentGrid, (row, col, oldColor) => {
+          const pos = getHexPosition(row, col, state.ceilingY || 0);
+          this.triggerOpponentPopParticles(pos.x, pos.y, oldColor);
+        });
+      }
+
+      // Detect opponent firing a bubble
+      if (state.projectile && state.projectile.id && state.projectile.id !== this.lastOpponentShotId) {
+        this.lastOpponentShotId = state.projectile.id;
+        this.opponentProjectile = {
+          x: state.projectile.x,
+          y: state.projectile.y,
+          vx: state.projectile.vx,
+          vy: state.projectile.vy,
+          color: state.projectile.color,
+          radius: BUBBLE_RADIUS
+        };
       }
 
       if (this.state === 'PLAYING') {
@@ -327,6 +346,9 @@ class BubblinGame {
     // Clear opponent state from any previous match
     this.opponentState = null;
     this.opponentGrid = createEmptyGrid();
+    this.opponentProjectile = null;
+    this.lastOpponentShotId = 0;
+    this.opponentParticles = [];
     this.loadStage(1);
 
     if (this.playMode === 'VERSUS') {
@@ -627,13 +649,21 @@ class BubblinGame {
       radius: BUBBLE_RADIUS
     };
 
+    const shotId = Date.now();
     this.currentBubbleColor = this.nextBubbleColor;
     this.nextBubbleColor = this.pickNextBubbleColor();
 
     networkManager.syncPlayerState({
       currentBubble: this.currentBubbleColor,
       nextBubble: this.nextBubbleColor,
-      projectile: this.projectile
+      projectile: {
+        id: shotId,
+        x: startX,
+        y: startY,
+        vx: this.projectile.vx,
+        vy: this.projectile.vy,
+        color: this.projectile.color
+      }
     }, true);
   }
 
@@ -696,6 +726,39 @@ class BubblinGame {
         alpha: 1,
         life: 0,
         maxLife: 20 + Math.random() * 15,
+        shape: Math.random() > 0.5 ? 'star' : 'circle'
+      });
+    }
+  }
+
+  private triggerOpponentPopParticles(x: number, y: number, color: BubbleColor): void {
+    const def = (color && color in COLOR_DEFS) ? COLOR_DEFS[color] : COLOR_DEFS.red;
+    this.opponentParticles.push({
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      color: def.light,
+      size: BUBBLE_RADIUS * 0.8,
+      alpha: 1,
+      life: 0,
+      maxLife: 16,
+      shape: 'ring'
+    });
+    const count = 10;
+    for (let i = 0; i < count; i++) {
+      const angle = (i * Math.PI * 2) / count + (Math.random() - 0.5) * 0.5;
+      const speed = 2.5 + Math.random() * 5;
+      this.opponentParticles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: Math.random() > 0.4 ? def.light : '#ffffff',
+        size: 3 + Math.random() * 3,
+        alpha: 1,
+        life: 0,
+        maxLife: 18 + Math.random() * 10,
         shape: Math.random() > 0.5 ? 'star' : 'circle'
       });
     }
@@ -886,8 +949,9 @@ class BubblinGame {
       score: this.score,
       combo: this.combo,
       ceilingY: this.ceilingY,
-      shotsBeforeDrop: this.shotsBeforeDrop
-    });
+      shotsBeforeDrop: this.shotsBeforeDrop,
+      projectile: null
+    }, true);
 
     // Check Deadline Crossing (Game Over)
     if (isDeadlineCrossed(this.grid, this.ceilingY, DEADLINE_Y)) {
@@ -1017,6 +1081,7 @@ class BubblinGame {
         this.handleSnap(res.snapCell, false);
       } else if (res.hit && !res.snapCell) {
         this.projectile = null;
+        networkManager.syncPlayerState({ projectile: null }, true);
       }
     }
 
@@ -1030,6 +1095,21 @@ class BubblinGame {
         this.handleSnap(res.snapCell, true);
       } else if (res.hit && !res.snapCell) {
         this.p2Projectile = null;
+      }
+    }
+
+    // Update opponent projectile flight (in VERSUS mode)
+    if (this.playMode === 'VERSUS' && this.opponentProjectile) {
+      const res = updateProjectile(
+        this.opponentProjectile,
+        this.opponentGrid,
+        this.opponentState?.ceilingY || 0
+      );
+      if (res.hit) {
+        if (res.snapCell && this.opponentGrid[res.snapCell.row]?.[res.snapCell.col]) {
+          this.opponentGrid[res.snapCell.row][res.snapCell.col].color = this.opponentProjectile.color;
+        }
+        this.opponentProjectile = null;
       }
     }
 
@@ -1098,7 +1178,7 @@ class BubblinGame {
     // If Versus mode, render opponent's canvas
     if (this.playMode === 'VERSUS' && this.opponentRenderer) {
       let oppTrajectory = null;
-      if (this.opponentState && !this.opponentState.projectile) {
+      if (this.opponentState && !this.opponentProjectile) {
         oppTrajectory = calculateTrajectory(
           LAUNCHER_X + Math.sin(this.opponentState.aimAngle) * BARREL_LENGTH,
           LAUNCHER_Y - Math.cos(this.opponentState.aimAngle) * BARREL_LENGTH,
@@ -1118,11 +1198,9 @@ class BubblinGame {
           ? this.opponentState.nextBubble
           : 'green',
         aimAngle: this.opponentState?.aimAngle || 0,
-        projectile: this.opponentState?.projectile
-          ? { ...this.opponentState.projectile, radius: BUBBLE_RADIUS }
-          : null,
+        projectile: this.opponentProjectile,
         droppingBubbles: [],
-        particles: [],
+        particles: this.opponentParticles,
         scorePopups: [],
         confettiList: [],
         trajectory: oppTrajectory,
@@ -1138,21 +1216,33 @@ function serializeGrid(grid: GridCell[][]): (BubbleColor | '')[][] {
   return grid.map((row) => row.map((cell) => cell.color || ''));
 }
 
-function deserializeGrid(data: any, targetGrid: GridCell[][]): void {
+function deserializeGrid(
+  data: any,
+  targetGrid: GridCell[][],
+  onCellCleared?: (row: number, col: number, oldColor: BubbleColor) => void
+): void {
   if (!data) return;
   for (let r = 0; r < targetGrid.length; r++) {
     const rowData = data[r];
     if (!rowData) {
       for (let c = 0; c < targetGrid[r].length; c++) {
+        const oldColor = targetGrid[r][c].color;
+        if (oldColor && onCellCleared) {
+          onCellCleared(r, c, oldColor);
+        }
         targetGrid[r][c].color = null;
       }
       continue;
     }
     for (let c = 0; c < targetGrid[r].length; c++) {
       const colVal = rowData[c];
+      const oldColor = targetGrid[r][c].color;
       if (colVal && typeof colVal === 'string' && colVal in COLOR_DEFS) {
         targetGrid[r][c].color = colVal as BubbleColor;
       } else {
+        if (oldColor && onCellCleared) {
+          onCellCleared(r, c, oldColor);
+        }
         targetGrid[r][c].color = null;
       }
     }
