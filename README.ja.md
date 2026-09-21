@@ -78,7 +78,7 @@ Bubblin' のオンラインマルチプレイは、無料の **Firebase Realtime
    ```json
    {
      "rules": {
-       "bubblin_rooms": {
+       "rooms": {
          ".read": true,
          ".write": true
        }

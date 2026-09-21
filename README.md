@@ -78,7 +78,7 @@ Bubblin' uses **Firebase Realtime Database** for seamless real-time state synchr
    ```json
    {
      "rules": {
-       "bubblin_rooms": {
+       "rooms": {
          ".read": true,
          ".write": true
        }

@@ -143,60 +143,69 @@ export class NetworkManager {
     this.myPlayerName = playerName || 'Player 2';
     roomId = roomId.trim().toUpperCase();
 
-    this.db = await initFirebase();
-    if (!this.db) {
-      return { success: false, mode: 'VERSUS', error: 'Firebase is not configured.' };
+    try {
+      this.db = await initFirebase();
+      if (!this.db) {
+        return { success: false, mode: 'VERSUS', error: 'Firebase is not configured.' };
+      }
+
+      this.isLocalMode = false;
+      this.currentRoomId = roomId;
+
+      const roomRef = ref(this.db, `rooms/${roomId}`);
+      const snapshot = await get(roomRef);
+
+      if (!snapshot.exists()) {
+        return { success: false, mode: 'VERSUS', error: 'ルームが見つかりません。コードを確認してください。' };
+      }
+
+      const data = snapshot.val() as RoomData;
+      if (data.p2 && data.p2.id && data.p2.ready && data.p2.id !== this.myPlayerId) {
+        return { success: false, mode: data.mode, error: 'このルームはすでに満員です。' };
+      }
+
+      this.playMode = data.mode;
+
+      const p2State: PlayerNetworkState = {
+        id: this.myPlayerId,
+        name: this.myPlayerName,
+        ready: true,
+        aimAngle: 0,
+        currentBubble: 'blue',
+        nextBubble: 'green',
+        projectile: null,
+        score: 0,
+        combo: 0,
+        ceilingY: 0,
+        shotsBeforeDrop: 8,
+        grid: [],
+        isDead: false,
+        isCleared: false,
+        attackPending: 0,
+        lastActive: Date.now()
+      };
+
+      await update(ref(this.db, `rooms/${roomId}`), {
+        p2: p2State,
+        status: 'PLAYING'
+      });
+
+      // Disconnect cleanup for p2
+      const p2Ref = ref(this.db, `rooms/${roomId}/p2`);
+      onDisconnect(p2Ref).remove().catch(() => {});
+
+      this.subscribeToRoom(roomId);
+      this.sendSystemChatMessage(`${this.myPlayerName} が参加しました！ゲームを開始します。`);
+
+      return { success: true, mode: data.mode };
+    } catch (err: any) {
+      console.error('[Network] Failed to join room:', err);
+      const isPerm = err?.message?.includes('PERMISSION_DENIED') || err?.code === 'PERMISSION_DENIED';
+      const msg = isPerm
+        ? 'Firebaseの権限エラー (PERMISSION_DENIED) が発生しました。\nFirebase Console の「Realtime Database > ルール」で read / write 権限が許可されているかご確認ください。'
+        : (err?.message || 'ルームへの参加に失敗しました。');
+      return { success: false, mode: 'VERSUS', error: msg };
     }
-
-    this.isLocalMode = false;
-    this.currentRoomId = roomId;
-
-    const roomRef = ref(this.db, `rooms/${roomId}`);
-    const snapshot = await get(roomRef);
-
-    if (!snapshot.exists()) {
-      return { success: false, mode: 'VERSUS', error: 'ルームが見つかりません。コードを確認してください。' };
-    }
-
-    const data = snapshot.val() as RoomData;
-    if (data.p2 && data.p2.id && data.p2.ready && data.p2.id !== this.myPlayerId) {
-      return { success: false, mode: data.mode, error: 'このルームはすでに満員です。' };
-    }
-
-    this.playMode = data.mode;
-
-    const p2State: PlayerNetworkState = {
-      id: this.myPlayerId,
-      name: this.myPlayerName,
-      ready: true,
-      aimAngle: 0,
-      currentBubble: 'blue',
-      nextBubble: 'green',
-      projectile: null,
-      score: 0,
-      combo: 0,
-      ceilingY: 0,
-      shotsBeforeDrop: 8,
-      grid: [],
-      isDead: false,
-      isCleared: false,
-      attackPending: 0,
-      lastActive: Date.now()
-    };
-
-    await update(ref(this.db, `rooms/${roomId}`), {
-      p2: p2State,
-      status: 'PLAYING'
-    });
-
-    // Disconnect cleanup for p2
-    const p2Ref = ref(this.db, `rooms/${roomId}/p2`);
-    onDisconnect(p2Ref).remove();
-
-    this.subscribeToRoom(roomId);
-    this.sendSystemChatMessage(`${this.myPlayerName} が参加しました！ゲームを開始します！`);
-
-    return { success: true, mode: data.mode };
   }
 
   /**

@@ -220,11 +220,20 @@ class BubblinGame {
     }
 
     if (isHost) {
-      const code = await networkManager.createRoom(mode, playerName, 1);
-      this.state = 'LOBBY';
-      this.ui.showWaitingPanel(code);
-      this.chatManager.setVisible(true);
-      this.chatManager.updateRoomInfo(code, mode);
+      try {
+        const code = await networkManager.createRoom(mode, playerName, 1);
+        this.state = 'LOBBY';
+        this.ui.showWaitingPanel(code);
+        this.chatManager.setVisible(true);
+        this.chatManager.updateRoomInfo(code, mode);
+      } catch (err: any) {
+        console.error('[Multiplayer] Failed to create room:', err);
+        const isPermission = err?.message?.includes('PERMISSION_DENIED') || err?.code === 'PERMISSION_DENIED';
+        const msg = isPermission
+          ? 'Firebaseの権限エラー (PERMISSION_DENIED) が発生しました。\nFirebase Console の「Realtime Database > ルール」で read / write 権限が許可されているかご確認ください。'
+          : `ルーム作成に失敗しました: ${err?.message || err}`;
+        alert(msg);
+      }
     } else if (roomId) {
       const res = await networkManager.joinRoom(roomId, playerName);
       if (res.success) {
