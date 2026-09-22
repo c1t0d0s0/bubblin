@@ -637,7 +637,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
+  padding: 10px 8px;
   background: rgba(12, 14, 26, 0.9);
   border-bottom: 1px solid var(--panel-border);
 }
@@ -645,16 +645,19 @@ body {
 .chat-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-weight: 800;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: var(--accent-cyan);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .chat-header-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0; /* lets .chat-room-badge shrink/ellipsize instead of forcing the row to wrap */
 }
 
 .chat-room-badge {
@@ -663,8 +666,12 @@ body {
   background: rgba(255, 208, 0, 0.15);
   border: 1px solid rgba(255, 208, 0, 0.4);
   color: var(--accent-gold);
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .chat-mode-badge {
@@ -673,20 +680,24 @@ body {
   background: rgba(255, 45, 85, 0.15);
   border: 1px solid rgba(255, 45, 85, 0.4);
   color: var(--accent-pink);
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .chat-copy-btn {
   background: rgba(0, 210, 255, 0.2);
   border: 1px solid #00d2ff;
   color: #ffffff;
-  padding: 2px 8px;
+  padding: 2px 6px;
   font-size: 0.72rem;
   font-weight: 700;
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .chat-copy-btn:hover {

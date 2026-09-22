@@ -130,7 +130,7 @@ export class ChatManager {
     }
     const modeBadge = document.getElementById('chat-room-mode');
     if (modeBadge) {
-      modeBadge.textContent = mode === 'VERSUS' ? '⚔️ 対戦 (VS)' : '🤝 協力 (CO-OP)';
+      modeBadge.textContent = mode === 'VERSUS' ? '⚔️ VS' : '🤝 CO-OP';
     }
   }
 
