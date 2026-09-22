@@ -11,6 +11,7 @@ import {
   LAUNCHER_X,
   LAUNCHER_Y,
   VERSUS_STAGE_IDS,
+  VERSUS_WINS_NEEDED,
   getVersusStageId,
   MAX_AIM_ANGLE,
   MIN_AIM_ANGLE,
@@ -43,6 +44,7 @@ import {
   Particle,
   PlayerNetworkState,
   PlayMode,
+  PlayerSlot,
   Projectile,
   RoomData,
   VersusMatch,
@@ -116,6 +118,19 @@ class BubblinGame {
   private p2Projectile: Projectile | null = null;
   private keyLeftP2: boolean = false;
   private keyRightP2: boolean = false;
+
+  // Local VERSUS 2P: P2 gets a fully separate, locally-simulated board (right canvas)
+  private p2Grid: GridCell[][] = [];
+  private p2CeilingY: number = 0;
+  private p2TargetCeilingY: number = 0;
+  private p2ShotsBeforeDrop: number = 6;
+  private p2MaxShotsBeforeDrop: number = 6;
+  private p2Score: number = 0;
+  private p2Combo: number = 0;
+  private p2WarningTime: number = 0;
+  private p2DroppingBubbles: DroppingBubble[] = [];
+  private p2Particles: Particle[] = [];
+  private p2ScorePopups: ScorePopup[] = [];
 
   // Online CO-OP: host simulates the shared board, guest renders snapshots and sends inputs
   private coopEpoch: number = 0; // host: bumped on every stage / round load
@@ -210,6 +225,10 @@ class BubblinGame {
   public async requestRematch(): Promise<void> {
     if (this.isLocal2P) {
       this.ui.hideGameOverModal();
+      // Local VERSUS: a fresh best-of-3, 0-0 from game 1
+      this.versus = { game: 1, p1Wins: 0, p2Wins: 0, resultGame: 0 };
+      this.versusResultShown = 0;
+      this.versusAdvanceScheduled = 0;
       this.startRematchGame();
       return;
     }
@@ -516,18 +535,37 @@ class BubblinGame {
     return this.playMode === 'VERSUS' && !this.isSpectating() && !!networkManager.getRoomId() && networkManager.getMySlot() === 'p1';
   }
 
-  /** Local (offline) VERSUS has no host to record results: show a single-game result directly. */
-  private showLocalVersusResult(won: boolean): void {
-    if (networkManager.getRoomId()) return;
-    this.ui.showVersusResult({
-      game: 1,
-      won,
-      myWins: won ? 1 : 0,
-      rivalWins: won ? 0 : 1,
-      myScore: this.score,
-      rivalScore: this.opponentState?.score || 0,
-      matchOver: true
-    });
+  /** Local VERSUS: one PC, one keyboard split in two — P1 and P2 each get their own locally-simulated board. */
+  private isLocalVersus(): boolean {
+    return this.playMode === 'VERSUS' && this.isLocal2P;
+  }
+
+  /** Local VERSUS (no host): records this game's winner directly, then reuses the same result flow as online. */
+  private recordLocalVersusResult(winner: PlayerSlot): void {
+    if (this.versus.resultGame === this.versus.game) return; // already recorded
+    const next: VersusMatch = {
+      game: this.versus.game,
+      p1Wins: this.versus.p1Wins + (winner === 'p1' ? 1 : 0),
+      p2Wins: this.versus.p2Wins + (winner === 'p2' ? 1 : 0),
+      resultGame: this.versus.game,
+      winner
+    };
+    if (next.p1Wins >= VERSUS_WINS_NEEDED) next.matchWinner = 'p1';
+    else if (next.p2Wins >= VERSUS_WINS_NEEDED) next.matchWinner = 'p2';
+    this.handleVersusUpdate(next);
+  }
+
+  /** Local VERSUS: starts the next game of the match with a fresh board for both players. */
+  private advanceLocalVersusGame(): void {
+    if (this.versus.matchWinner || this.versus.resultGame !== this.versus.game) return;
+    this.versus = {
+      game: Math.min(this.versus.game + 1, VERSUS_STAGE_IDS.length),
+      p1Wins: this.versus.p1Wins,
+      p2Wins: this.versus.p2Wins,
+      resultGame: 0
+    };
+    this.ui.hideGameOverModal();
+    this.startMultiplayerGame();
   }
 
   /** Called with the room's match progress on every room update (players and spectators). */
@@ -582,14 +620,19 @@ class BubblinGame {
       myWins,
       rivalWins,
       myScore: this.score,
-      rivalScore: this.opponentState?.score || 0,
+      rivalScore: this.isLocalVersus() ? this.p2Score : (this.opponentState?.score || 0),
       matchOver
     });
 
-    // Host starts the next game after a short pause
-    if (this.isVersusHost() && !matchOver && this.versusAdvanceScheduled !== v.game) {
-      this.versusAdvanceScheduled = v.game;
-      setTimeout(() => networkManager.advanceVersusGame(), 3500);
+    // Host (online) or the sole local client (local VERSUS) starts the next game after a short pause
+    if (!matchOver && this.versusAdvanceScheduled !== v.game) {
+      if (this.isVersusHost()) {
+        this.versusAdvanceScheduled = v.game;
+        setTimeout(() => networkManager.advanceVersusGame(), 3500);
+      } else if (this.isLocalVersus()) {
+        this.versusAdvanceScheduled = v.game;
+        setTimeout(() => this.advanceLocalVersusGame(), 3500);
+      }
     }
   }
 
@@ -811,9 +854,9 @@ class BubblinGame {
     this.versusAdvanceScheduled = 0;
 
     if (isLocal) {
+      // Same device, both players in the room: a text chat panel serves no purpose
       this.ui.hideMultiplayerModal();
-      this.chatManager.setVisible(true);
-      this.chatManager.updateRoomInfo('LOCAL', mode);
+      this.chatManager.setVisible(false);
       this.startMultiplayerGame();
       return;
     }
@@ -918,12 +961,31 @@ class BubblinGame {
         fontSize: 30,
         isBanner: true
       });
-      // Initialize opponent stage grid identical to my stage
-      const layout = this.currentStageData.layout;
-      for (let r = 0; r < layout.length; r++) {
-        for (let c = 0; c < layout[r].length; c++) {
-          if (layout[r][c] && r < this.opponentGrid.length && c < this.opponentGrid[r].length) {
-            this.opponentGrid[r][c].color = layout[r][c];
+      if (this.isLocalVersus()) {
+        // Local VERSUS: give P2 their own separate board, an identical copy of P1's starting layout
+        this.p2Grid = this.grid.map((row) => row.map((cell) => ({ ...cell })));
+        this.p2CeilingY = 0;
+        this.p2TargetCeilingY = 0;
+        this.p2ShotsBeforeDrop = this.currentStageData.shotsBeforeDrop;
+        this.p2MaxShotsBeforeDrop = this.currentStageData.shotsBeforeDrop;
+        this.p2Score = 0;
+        this.p2Combo = 0;
+        this.p2WarningTime = 0;
+        this.p2DroppingBubbles = [];
+        this.p2Particles = [];
+        this.p2ScorePopups = [];
+        this.p2AimAngle = 0;
+        this.p2Projectile = null;
+        this.p2CurrentBubbleColor = this.pickNextBubbleColorFrom(this.p2Grid);
+        this.p2NextBubbleColor = this.pickNextBubbleColorFrom(this.p2Grid);
+      } else {
+        // Initialize opponent stage grid identical to my stage
+        const layout = this.currentStageData.layout;
+        for (let r = 0; r < layout.length; r++) {
+          for (let c = 0; c < layout[r].length; c++) {
+            if (layout[r][c] && r < this.opponentGrid.length && c < this.opponentGrid[r].length) {
+              this.opponentGrid[r][c].color = layout[r][c];
+            }
           }
         }
       }
@@ -1204,7 +1266,11 @@ class BubblinGame {
   }
 
   private pickNextBubbleColor(): BubbleColor {
-    const occupied = getOccupiedColors(this.grid);
+    return this.pickNextBubbleColorFrom(this.grid);
+  }
+
+  private pickNextBubbleColorFrom(grid: GridCell[][]): BubbleColor {
+    const occupied = getOccupiedColors(grid);
     if (occupied.length > 0) {
       return occupied[Math.floor(Math.random() * occupied.length)];
     }
@@ -1258,7 +1324,9 @@ class BubblinGame {
     if (isP2) {
       if (this.p2Projectile) return;
       soundManager.playShoot();
-      const startX = LAUNCHER_COOP_P2_X + Math.sin(this.p2AimAngle) * BARREL_LENGTH;
+      // Local VERSUS: P2 has their own separate canvas, launcher centered like a normal single-player board
+      const p2LauncherX = this.isLocalVersus() ? LAUNCHER_X : LAUNCHER_COOP_P2_X;
+      const startX = p2LauncherX + Math.sin(this.p2AimAngle) * BARREL_LENGTH;
       const startY = LAUNCHER_Y - Math.cos(this.p2AimAngle) * BARREL_LENGTH;
       this.p2Projectile = {
         x: startX,
@@ -1269,7 +1337,10 @@ class BubblinGame {
         radius: BUBBLE_RADIUS
       };
       this.p2CurrentBubbleColor = this.p2NextBubbleColor;
-      this.p2NextBubbleColor = this.pickNextBubbleColor();
+      // Local VERSUS draws from P2's own board; CO-OP shares P1's board
+      this.p2NextBubbleColor = this.isLocalVersus()
+        ? this.pickNextBubbleColorFrom(this.p2Grid)
+        : this.pickNextBubbleColor();
       return;
     }
 
@@ -1334,11 +1405,40 @@ class BubblinGame {
     });
   }
 
-  private triggerPopParticles(x: number, y: number, color: BubbleColor): void {
+  /** Local VERSUS: same as addScore(), but for P2's own board/score (doesn't affect the shared high score). */
+  private addScoreP2(
+    points: number,
+    text: string,
+    x: number,
+    y: number,
+    color: string,
+    fontSize?: number,
+    isBanner?: boolean
+  ): void {
+    this.p2Score += points;
+    this.p2ScorePopups.push({
+      x,
+      y,
+      text,
+      color,
+      alpha: 1,
+      scale: 1,
+      life: 0,
+      fontSize,
+      isBanner
+    });
+  }
+
+  private triggerPopParticles(
+    x: number,
+    y: number,
+    color: BubbleColor,
+    target: Particle[] = this.particles
+  ): void {
     const def = (color && color in COLOR_DEFS) ? COLOR_DEFS[color] : COLOR_DEFS.red;
 
     // Ring shockwave
-    this.particles.push({
+    target.push({
       x,
       y,
       vx: 0,
@@ -1356,7 +1456,7 @@ class BubblinGame {
     for (let i = 0; i < count; i++) {
       const angle = (i * Math.PI * 2) / count + (Math.random() - 0.5) * 0.5;
       const speed = 3 + Math.random() * 6;
-      this.particles.push({
+      target.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
@@ -1478,7 +1578,26 @@ class BubblinGame {
         // Versus Mode: send attack bubbles to opponent!
         if (this.playMode === 'VERSUS') {
           const attackCount = Math.max(1, Math.floor(floating.length / 2));
-          networkManager.sendAttack(attackCount);
+          if (this.isLocalVersus()) {
+            // No network: stick the obstacle bubbles directly onto P2's board
+            const added = this.addJunkBubblesTo(this.p2Grid, this.p2CeilingY, this.p2Particles, attackCount);
+            if (added > 0) {
+              this.p2ScorePopups.push({
+                x: CANVAS_WIDTH / 2,
+                y: this.p2CeilingY + 60,
+                text: `⚠️ ATTACK INCOMING x${added}!`,
+                color: '#ff2d55',
+                alpha: 1,
+                scale: 1.2,
+                life: 0,
+                fontSize: 22,
+                isBanner: true
+              });
+              if (isDeadlineCrossed(this.p2Grid, this.p2CeilingY, DEADLINE_Y)) this.gameOverP2();
+            }
+          } else {
+            networkManager.sendAttack(attackCount);
+          }
           this.scorePopups.push({
             x: CANVAS_WIDTH / 2,
             y: snapPos.y - 30,
@@ -1574,7 +1693,7 @@ class BubblinGame {
         if (this.playMode === 'VERSUS') {
           networkManager.syncPlayerState({ isCleared: true, score: this.score }, true);
           if (this.isVersusHost()) networkManager.recordVersusResult('p1');
-          this.showLocalVersusResult(true);
+          else if (this.isLocalVersus()) this.recordLocalVersusResult('p1');
           return;
         }
 
@@ -1650,6 +1769,193 @@ class BubblinGame {
   }
 
   /**
+   * Local VERSUS 2P: resolves P2's shot against P2's own board. Mirrors handleSnap() for P1, since local
+   * VERSUS gives each player a fully separate, locally-simulated board instead of one shared grid.
+   */
+  private handleP2VersusSnap(snapCell: { row: number; col: number }): void {
+    const proj = this.p2Projectile;
+    if (!proj) return;
+
+    soundManager.playSnap();
+    const color = proj.color;
+    this.p2Grid[snapCell.row][snapCell.col].color = color;
+    this.p2Projectile = null;
+
+    const snapPos = getHexPosition(snapCell.row, snapCell.col, this.p2CeilingY);
+    const cluster = findCluster(this.p2Grid, snapCell.row, snapCell.col, color);
+
+    if (cluster.length >= 3) {
+      this.p2Combo++;
+      soundManager.playPop(this.p2Combo);
+      this.opponentRenderer?.triggerShake(4 + this.p2Combo);
+
+      for (const item of cluster) {
+        const pos = getHexPosition(item.row, item.col, this.p2CeilingY);
+        this.p2Grid[item.row][item.col].color = null;
+        this.triggerPopParticles(pos.x, pos.y, color, this.p2Particles);
+      }
+
+      const clusterPoints = cluster.length * 100 * this.p2Combo;
+      const comboText = this.p2Combo > 1 ? `${this.p2Combo} COMBO! +${clusterPoints}` : `+${clusterPoints}`;
+      this.addScoreP2(clusterPoints, comboText, snapPos.x, snapPos.y, COLOR_DEFS[color].light);
+
+      const floating = findFloatingBubbles(this.p2Grid);
+      if (floating.length > 0) {
+        soundManager.playDrop(floating.length);
+
+        const isBigDrop = floating.length >= 4;
+        if (isBigDrop) {
+          this.freezeFrames = Math.min(8, Math.floor(floating.length * 0.6));
+          this.opponentRenderer?.triggerFlash(Math.min(0.65, 0.22 + floating.length * 0.03));
+          this.opponentRenderer?.triggerShake(9 + Math.min(13, floating.length * 0.8));
+        } else {
+          this.opponentRenderer?.triggerShake(6 + Math.min(6, floating.length));
+        }
+
+        // Send obstacle bubbles to P1's board
+        const attackCount = Math.max(1, Math.floor(floating.length / 2));
+        const added = this.addJunkBubblesTo(this.grid, this.ceilingY, this.particles, attackCount);
+        this.p2ScorePopups.push({
+          x: CANVAS_WIDTH / 2,
+          y: snapPos.y - 30,
+          text: `⚔️ ATTACK x${attackCount}!`,
+          color: '#ff8a3d',
+          alpha: 1,
+          scale: 1.2,
+          life: 0,
+          fontSize: 22,
+          isBanner: true
+        });
+        if (added > 0) {
+          this.scorePopups.push({
+            x: CANVAS_WIDTH / 2,
+            y: this.ceilingY + 60,
+            text: `⚠️ ATTACK INCOMING x${added}!`,
+            color: '#ff2d55',
+            alpha: 1,
+            scale: 1.2,
+            life: 0,
+            fontSize: 22,
+            isBanner: true
+          });
+          if (isDeadlineCrossed(this.grid, this.ceilingY, DEADLINE_Y)) this.gameOver();
+        }
+
+        const ringCount = Math.min(3, Math.ceil(floating.length / 3));
+        for (let ring = 0; ring < ringCount; ring++) {
+          this.p2Particles.push({
+            x: snapPos.x,
+            y: snapPos.y,
+            vx: 0,
+            vy: 0,
+            color: ring === 0 ? '#ffffff' : COLOR_DEFS[color].light,
+            size: BUBBLE_RADIUS * (0.8 + ring * 0.4),
+            alpha: 1,
+            life: -ring * 2,
+            maxLife: 20,
+            shape: 'ring'
+          });
+        }
+
+        for (const orphan of floating) {
+          const pos = getHexPosition(orphan.row, orphan.col, this.p2CeilingY);
+          this.p2Grid[orphan.row][orphan.col].color = null;
+
+          this.p2DroppingBubbles.push({
+            x: pos.x,
+            y: pos.y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: -2.0 - Math.random() * 2.5,
+            color: orphan.color,
+            radius: BUBBLE_RADIUS,
+            rotation: 0,
+            vRot: (Math.random() - 0.5) * 0.2,
+            alpha: 1,
+            history: []
+          });
+        }
+
+        const dropBonus = Math.min(50000, Math.pow(2, floating.length) * 100);
+
+        let bannerTitle = `DROP x${floating.length}!`;
+        let bannerColor = '#ffd000';
+        let bannerSize = 22;
+
+        if (floating.length >= 15) {
+          bannerTitle = `LEGENDARY DROP x${floating.length}!`;
+          bannerColor = '#ff3366';
+          bannerSize = 26;
+          this.triggerConfetti();
+        } else if (floating.length >= 10) {
+          bannerTitle = `AMAZING DROP x${floating.length}!`;
+          bannerColor = '#ffd000';
+          bannerSize = 25;
+          this.triggerConfetti();
+        } else if (floating.length >= 6) {
+          bannerTitle = `EXCELLENT DROP x${floating.length}!`;
+          bannerColor = '#00d2ff';
+          bannerSize = 23;
+        } else if (floating.length >= 4) {
+          bannerTitle = `GREAT DROP x${floating.length}!`;
+          bannerColor = '#10d060';
+          bannerSize = 22;
+        }
+
+        this.addScoreP2(
+          dropBonus,
+          `${bannerTitle} +${dropBonus}`,
+          CANVAS_WIDTH / 2,
+          snapPos.y + 40,
+          bannerColor,
+          bannerSize,
+          isBigDrop
+        );
+      }
+
+      // Check stage clear
+      if (countOccupiedBubbles(this.p2Grid) === 0) {
+        this.state = 'STAGE_CLEAR';
+        soundManager.setBgmDucking(true);
+        soundManager.playStageClear();
+        this.triggerConfetti();
+        this.recordLocalVersusResult('p2');
+        return;
+      }
+    } else {
+      // Missed match - reset combo
+      this.p2Combo = 0;
+      this.p2ShotsBeforeDrop--;
+
+      if (this.p2ShotsBeforeDrop === 1) {
+        soundManager.playWarning();
+        this.p2WarningTime = 60;
+      } else if (this.p2ShotsBeforeDrop <= 0) {
+        soundManager.playWarning();
+        this.opponentRenderer?.triggerShake(10);
+        this.p2TargetCeilingY += ROW_HEIGHT;
+        this.p2ShotsBeforeDrop = this.p2MaxShotsBeforeDrop;
+      }
+    }
+
+    // Check Deadline Crossing (Game Over)
+    if (isDeadlineCrossed(this.p2Grid, this.p2CeilingY, DEADLINE_Y)) {
+      this.gameOverP2();
+      return;
+    }
+
+    // Update loaded bubble colors
+    const remainingColors = getOccupiedColors(this.p2Grid);
+    if (remainingColors.length > 0) {
+      if (!remainingColors.includes(this.p2CurrentBubbleColor)) {
+        this.p2CurrentBubbleColor = remainingColors[Math.floor(Math.random() * remainingColors.length)];
+      }
+      if (!remainingColors.includes(this.p2NextBubbleColor)) {
+        this.p2NextBubbleColor = remainingColors[Math.floor(Math.random() * remainingColors.length)];
+      }
+    }
+  }
+
+  /**
    * VERSUS: the opponent's attack turns into `count` obstacle bubbles stuck onto my board.
    */
   private handleIncomingAttack(count: number): void {
@@ -1684,27 +1990,37 @@ class BubblinGame {
    * (so they never float and drop by themselves). Returns how many were placed.
    */
   private addJunkBubbles(count: number): number {
+    return this.addJunkBubblesTo(this.grid, this.ceilingY, this.particles, count);
+  }
+
+  /** Same as addJunkBubbles(), but targeting any board (used for local VERSUS, where P1/P2 attack each other directly). */
+  private addJunkBubblesTo(
+    grid: GridCell[][],
+    ceilingY: number,
+    particleTarget: Particle[],
+    count: number
+  ): number {
     let placed = 0;
     for (let i = 0; i < count; i++) {
       const candidates: { row: number; col: number }[] = [];
-      for (let r = 0; r < this.grid.length; r++) {
+      for (let r = 0; r < grid.length; r++) {
         for (let c = 0; c < getColsInRow(r); c++) {
-          if (this.grid[r][c].color) continue;
+          if (grid[r][c].color) continue;
           const attached =
-            r === 0 || getNeighbors(r, c).some((n) => this.grid[n.row]?.[n.col]?.color);
+            r === 0 || getNeighbors(r, c).some((n) => grid[n.row]?.[n.col]?.color);
           if (attached) candidates.push({ row: r, col: c });
         }
       }
       if (candidates.length === 0) break;
 
       const cell = candidates[Math.floor(Math.random() * candidates.length)];
-      const colors = getOccupiedColors(this.grid);
+      const colors = getOccupiedColors(grid);
       const pool = colors.length > 0 ? colors : this.currentStageData.colors;
       const color = pool[Math.floor(Math.random() * pool.length)];
-      this.grid[cell.row][cell.col].color = color;
+      grid[cell.row][cell.col].color = color;
 
-      const pos = getHexPosition(cell.row, cell.col, this.ceilingY);
-      this.triggerPopParticles(pos.x, pos.y, color);
+      const pos = getHexPosition(cell.row, cell.col, ceilingY);
+      this.triggerPopParticles(pos.x, pos.y, color, particleTarget);
       placed++;
     }
     if (placed > 0) soundManager.playSnap();
@@ -1720,13 +2036,23 @@ class BubblinGame {
     if (this.playMode === 'VERSUS') {
       networkManager.syncPlayerState({ isDead: true, score: this.score }, true);
       if (this.isVersusHost()) networkManager.recordVersusResult('p2');
-      this.showLocalVersusResult(false);
+      else if (this.isLocalVersus()) this.recordLocalVersusResult('p2');
       return;
     }
 
     setTimeout(() => {
       this.ui.showGameOver(this.score, this.highScore);
     }, 600);
+  }
+
+  /** Local VERSUS: P2's board crossed the deadline (mirrors gameOver() for P1's board). */
+  private gameOverP2(): void {
+    if (this.state !== 'PLAYING') return; // round already resolved (e.g. P1 finished first)
+    this.state = 'GAME_OVER';
+    soundManager.stopBgm();
+    soundManager.playGameOver();
+    this.opponentRenderer?.triggerShake(12);
+    this.recordLocalVersusResult('p1');
   }
 
   private gameLoop(_timestamp: number): void {
@@ -1791,6 +2117,21 @@ class BubblinGame {
       this.warningTime--;
     }
 
+    if (this.isLocalVersus()) {
+      if (this.p2CeilingY < this.p2TargetCeilingY) {
+        this.p2CeilingY += 2;
+        if (this.p2CeilingY >= this.p2TargetCeilingY) {
+          this.p2CeilingY = this.p2TargetCeilingY;
+          if (isDeadlineCrossed(this.p2Grid, this.p2CeilingY, DEADLINE_Y)) {
+            this.gameOverP2();
+          }
+        }
+      }
+      if (this.p2WarningTime > 0) {
+        this.p2WarningTime--;
+      }
+    }
+
     // Update projectile flight (P1)
     if (this.projectile) {
       const res = updateProjectile(this.projectile, this.grid, this.ceilingY);
@@ -1818,6 +2159,19 @@ class BubblinGame {
       }
     }
 
+    // Update projectile flight (P2 in local VERSUS, own separate board)
+    if (this.isLocalVersus() && this.p2Projectile) {
+      const res = updateProjectile(this.p2Projectile, this.p2Grid, this.p2CeilingY);
+      if (res.bounced) {
+        soundManager.playBounce();
+      }
+      if (res.hit && res.snapCell) {
+        this.handleP2VersusSnap(res.snapCell);
+      } else if (res.hit && !res.snapCell) {
+        this.p2Projectile = null;
+      }
+    }
+
     // Update opponent projectile flight (in VERSUS mode)
     if (this.playMode === 'VERSUS' && this.opponentProjectile) {
       const res = updateProjectile(
@@ -1840,6 +2194,15 @@ class BubblinGame {
       this.renderer.triggerShake(3);
       this.addScore(150, '+150', bx, by - 14, COLOR_DEFS[bColor].light, 16);
     });
+
+    if (this.isLocalVersus()) {
+      updateDroppingBubbles(this.p2DroppingBubbles, (bx, by, bColor) => {
+        soundManager.playBubbleSplash();
+        this.triggerPopParticles(bx, by, bColor, this.p2Particles);
+        this.opponentRenderer?.triggerShake(3);
+        this.addScoreP2(150, '+150', bx, by - 14, COLOR_DEFS[bColor].light, 16);
+      });
+    }
 
     if (this.isCoopHost() && (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR' || this.state === 'GAME_OVER')) {
       this.tickCoopHostSync();
@@ -1908,16 +2271,55 @@ class BubblinGame {
         : undefined
     });
 
-    // If Versus mode, render opponent's canvas
+    // If Versus mode, render opponent's / P2's canvas
     if (this.playMode === 'VERSUS' && this.opponentRenderer) {
-      this.renderRemoteBoard(this.opponentRenderer, {
-        state: this.opponentState,
-        grid: this.opponentGrid,
-        projectile: this.opponentProjectile,
-        lastShotId: this.lastOpponentShotId,
-        particles: this.opponentParticles
-      });
+      if (this.isLocalVersus()) {
+        this.renderLocalP2Board();
+      } else {
+        this.renderRemoteBoard(this.opponentRenderer, {
+          state: this.opponentState,
+          grid: this.opponentGrid,
+          projectile: this.opponentProjectile,
+          lastShotId: this.lastOpponentShotId,
+          particles: this.opponentParticles
+        });
+      }
     }
+  }
+
+  /** Local VERSUS: renders P2's own board on the right/opponent canvas. */
+  private renderLocalP2Board(): void {
+    if (!this.opponentRenderer) return;
+
+    // LOOP MODE (after clearing stage 30): hide the aiming guide for extra difficulty
+    const showGuide = this.currentStageId <= 30;
+    let trajectory = null;
+    if (showGuide && this.state === 'PLAYING' && !this.p2Projectile) {
+      trajectory = calculateTrajectory(
+        LAUNCHER_X + Math.sin(this.p2AimAngle) * BARREL_LENGTH,
+        LAUNCHER_Y - Math.cos(this.p2AimAngle) * BARREL_LENGTH,
+        this.p2AimAngle,
+        this.p2Grid,
+        this.p2CeilingY
+      );
+    }
+
+    this.opponentRenderer.render({
+      grid: this.p2Grid,
+      ceilingY: this.p2CeilingY,
+      currentBubble: this.p2CurrentBubbleColor,
+      nextBubble: this.p2NextBubbleColor,
+      aimAngle: this.p2AimAngle,
+      projectile: this.p2Projectile,
+      droppingBubbles: this.p2DroppingBubbles,
+      particles: this.p2Particles,
+      scorePopups: this.p2ScorePopups,
+      confettiList: [],
+      trajectory,
+      shotsBeforeDrop: this.p2ShotsBeforeDrop,
+      maxShotsBeforeDrop: this.p2MaxShotsBeforeDrop,
+      warningTime: this.p2WarningTime
+    });
   }
 }
 
