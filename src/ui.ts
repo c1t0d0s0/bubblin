@@ -2,6 +2,7 @@ import { soundManager } from './audio';
 import { applyStaticTranslations, currentLang, translations } from './i18n';
 import { PlayMode } from './types';
 import { networkManager } from './network';
+import { renderInviteQr } from './qr';
 
 export interface UICallbacks {
   onStartGame: () => void;
@@ -254,10 +255,16 @@ export class UIManager {
     if (waitingPanel) waitingPanel.classList.remove('hidden');
     if (codeEl) codeEl.textContent = roomCode;
 
+    const url = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(this.selectedMode)}`;
+
+    const qrCanvas = document.getElementById('waiting-qr-canvas') as HTMLCanvasElement | null;
+    if (qrCanvas) {
+      renderInviteQr(qrCanvas, url).catch((err) => console.warn('[UI] QR render failed:', err));
+    }
+
     const copyBtn = document.getElementById('waiting-copy-url-btn');
     if (copyBtn) {
       copyBtn.onclick = () => {
-        const url = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(this.selectedMode)}`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(url).then(() => {
             const orig = copyBtn.innerHTML;

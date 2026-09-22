@@ -88,20 +88,15 @@
           <div class="chat-header-meta">
             <span id="chat-room-code" class="chat-room-badge">BUB</span>
             <span id="chat-room-mode" class="chat-mode-badge">⚔️ VS</span>
-            <button id="copy-invite-btn" class="chat-copy-btn" title="招待URLをコピー">🔗 招待</button>
+            <button id="copy-invite-btn" class="chat-copy-btn" title="招待リンクをコピー / QRコードを表示">🔗 招待</button>
+          </div>
+          <div id="qr-popover" class="qr-popover hidden">
+            <canvas id="qr-popover-canvas" width="120" height="120"></canvas>
+            <span class="qr-popover-caption">相手のスマホで読み取り</span>
           </div>
         </div>
 
         <div id="chat-messages" class="chat-messages"></div>
-
-        <div class="chat-quick-reactions">
-          <button class="chat-emoji-btn" data-emoji="🫧" title="バブル">🫧</button>
-          <button class="chat-emoji-btn" data-emoji="👏" title="拍手">👏</button>
-          <button class="chat-emoji-btn" data-emoji="🔥" title="ファイヤー">🔥</button>
-          <button class="chat-emoji-btn" data-emoji="💀" title="ドクロ">💀</button>
-          <button class="chat-emoji-btn" data-emoji="💥" title="バーン">💥</button>
-          <button class="chat-emoji-btn" data-emoji="🎮" title="GG">🎮</button>
-        </div>
 
         <div class="chat-input-bar">
           <input id="chat-input" type="text" placeholder="メッセージを入力... (Enterで送信)" maxlength="100" />
@@ -212,10 +207,14 @@
               <span class="code-label">ROOM CODE:</span>
               <span id="waiting-room-code" class="code-value">BUB77</span>
             </div>
+            <div class="qr-chip">
+              <canvas id="waiting-qr-canvas" width="132" height="132"></canvas>
+              <span class="qr-chip-caption">相手のスマホで読み取り</span>
+            </div>
             <button type="button" id="waiting-copy-url-btn" class="modal-btn copy-url-btn">
               📋 招待リンクをコピー
             </button>
-            <p class="waiting-tip">招待リンクを対戦相手に送ってください。<br />相手が参加すると自動でゲームが開始します。</p>
+            <p class="waiting-tip">招待リンクかQRコードを対戦相手に送ってください。<br />相手が参加すると自動でゲームが開始します。</p>
             <button type="button" id="cancel-room-btn" class="modal-btn cancel-btn">
               ✕ キャンセル
             </button>

@@ -1,5 +1,6 @@
 import { ChatMessage } from './types';
 import { networkManager } from './network';
+import { renderInviteQr } from './qr';
 
 export class ChatManager {
   private panelElem: HTMLElement | null = null;
@@ -9,6 +10,9 @@ export class ChatManager {
   private copyLinkBtn: HTMLButtonElement | null = null;
   private roomCodeBadge: HTMLElement | null = null;
   private gameCanvas: HTMLCanvasElement | null = null;
+  private qrPopoverElem: HTMLElement | null = null;
+  private qrPopoverCanvas: HTMLCanvasElement | null = null;
+  private qrOutsideClickHandler: ((e: PointerEvent) => void) | null = null;
 
   constructor() {
     this.panelElem = document.getElementById('chat-panel');
@@ -18,6 +22,8 @@ export class ChatManager {
     this.copyLinkBtn = document.getElementById('copy-invite-btn') as HTMLButtonElement | null;
     this.roomCodeBadge = document.getElementById('chat-room-code');
     this.gameCanvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
+    this.qrPopoverElem = document.getElementById('qr-popover');
+    this.qrPopoverCanvas = document.getElementById('qr-popover-canvas') as HTMLCanvasElement | null;
 
     this.setupEvents();
   }
@@ -33,33 +39,24 @@ export class ChatManager {
       });
     }
 
-    // Quick emoji reaction buttons
-    const emojiBtns = document.querySelectorAll('.chat-emoji-btn');
-    emojiBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const emoji = btn.getAttribute('data-emoji') || btn.textContent || '';
-        if (emoji) {
-          networkManager.sendChatMessage(emoji);
-        }
-      });
-    });
-
-    // Copy invite link button
+    // Copy invite link button: copies the URL and pops open a QR code for it
     if (this.copyLinkBtn) {
       this.copyLinkBtn.addEventListener('click', () => {
         const roomId = networkManager.getRoomId();
-        if (roomId) {
-          const url = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
-          navigator.clipboard.writeText(url).then(() => {
-            if (this.copyLinkBtn) {
-              const orig = this.copyLinkBtn.textContent;
-              this.copyLinkBtn.textContent = 'COPIED! ✅';
-              setTimeout(() => {
-                if (this.copyLinkBtn) this.copyLinkBtn.textContent = orig;
-              }, 2000);
-            }
-          });
-        }
+        if (!roomId) return;
+
+        const url = `${window.location.origin}${window.location.pathname}?room=${roomId}&mode=${encodeURIComponent(networkManager.getPlayMode())}`;
+        this.showQrPopover(url);
+
+        navigator.clipboard.writeText(url).then(() => {
+          if (this.copyLinkBtn) {
+            const orig = this.copyLinkBtn.textContent;
+            this.copyLinkBtn.textContent = 'COPIED! ✅';
+            setTimeout(() => {
+              if (this.copyLinkBtn) this.copyLinkBtn.textContent = orig;
+            }, 2000);
+          }
+        });
       });
     }
 
@@ -156,6 +153,50 @@ export class ChatManager {
         this.panelElem.classList.add('hidden');
         document.getElementById('app')?.classList.remove('multiplayer-active');
       }
+    }
+    if (!visible) {
+      this.hideQrPopover();
+    }
+  }
+
+  /**
+   * Opens the QR code popover under the invite button, rendering a fresh code for `url`.
+   * Closes on outside click, Escape, or after a while.
+   */
+  private showQrPopover(url: string): void {
+    if (!this.qrPopoverElem || !this.qrPopoverCanvas) return;
+
+    // Re-opening (e.g. the invite button clicked again) shouldn't stack up listeners
+    this.hideQrPopover();
+
+    renderInviteQr(this.qrPopoverCanvas, url).catch((err) => console.warn('[Chat] QR render failed:', err));
+    this.qrPopoverElem.classList.remove('hidden');
+
+    this.qrOutsideClickHandler = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!this.qrPopoverElem?.contains(target) && target !== this.copyLinkBtn) {
+        this.hideQrPopover();
+      }
+    };
+    // Registered on the next tick so the click that opened the popover doesn't immediately close it
+    setTimeout(() => {
+      if (this.qrOutsideClickHandler) {
+        document.addEventListener('pointerdown', this.qrOutsideClickHandler);
+        document.addEventListener('keydown', this.handleQrEscape);
+      }
+    }, 0);
+  }
+
+  private handleQrEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this.hideQrPopover();
+  };
+
+  private hideQrPopover(): void {
+    this.qrPopoverElem?.classList.add('hidden');
+    if (this.qrOutsideClickHandler) {
+      document.removeEventListener('pointerdown', this.qrOutsideClickHandler);
+      document.removeEventListener('keydown', this.handleQrEscape);
+      this.qrOutsideClickHandler = null;
     }
   }
 

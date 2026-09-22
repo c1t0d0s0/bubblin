@@ -634,6 +634,7 @@ body {
 }
 
 .chat-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -702,6 +703,50 @@ body {
 
 .chat-copy-btn:hover {
   background: rgba(0, 210, 255, 0.4);
+}
+
+/* QR code popover: opened by the invite button, same "torn ticket" chip as the waiting-room QR */
+.qr-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 8px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(10, 12, 22, 0.97);
+  border: 2px dashed rgba(255, 208, 0, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  animation: qr-pop-in 0.15s ease-out;
+}
+
+.qr-popover.hidden {
+  display: none !important;
+}
+
+.qr-popover canvas {
+  display: block;
+  border-radius: 6px;
+}
+
+.qr-popover-caption {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+@keyframes qr-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .chat-messages {
@@ -803,29 +848,6 @@ body {
   word-break: break-word;
   line-height: 1.35;
   color: #e2e8f0;
-}
-
-.chat-quick-reactions {
-  display: flex;
-  justify-content: space-around;
-  padding: 6px 8px;
-  background: rgba(14, 16, 28, 0.85);
-  border-top: 1px solid rgba(100, 130, 240, 0.15);
-}
-
-.chat-emoji-btn {
-  background: none;
-  border: none;
-  font-size: 1.15rem;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
-  transition: transform 0.12s, background 0.12s;
-}
-
-.chat-emoji-btn:hover {
-  transform: scale(1.25);
-  background: rgba(255, 255, 255, 0.1);
 }
 
 .chat-input-bar {
@@ -1108,6 +1130,30 @@ body {
   color: var(--accent-gold);
   letter-spacing: 4px;
   text-shadow: 0 0 15px rgba(255, 208, 0, 0.5);
+}
+
+/* Same dashed "ticket" chip as the room code above it: the QR is the code, shown a second way */
+.qr-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 12, 22, 0.8);
+  border: 2px dashed rgba(255, 208, 0, 0.4);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 8px 0;
+}
+
+.qr-chip canvas {
+  display: block;
+  border-radius: 6px;
+}
+
+.qr-chip-caption {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.2px;
 }
 
 .copy-url-btn {
