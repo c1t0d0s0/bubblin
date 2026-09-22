@@ -301,9 +301,9 @@ export const STAGES: StageData[] = [
     layout: parseLayout([
       'P . P P P P P P . P',
       '. G . G G G . G .',
-      'P G R R R R R R G P',
-      '. G R Y Y Y R G .',
-      'P G R R R R R R G P',
+      'P G R R R B B B G P',
+      '. G R Y Y Y B G .',
+      'P G R R R B B B G P',
       '. G . G G G . G .',
       'B . . B B B B . . B'
     ])
