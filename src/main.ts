@@ -16,7 +16,9 @@ import {
   MAX_AIM_ANGLE,
   MIN_AIM_ANGLE,
   PROJECTILE_SPEED,
-  ROW_HEIGHT
+  ROW_HEIGHT,
+  TIME_LIMIT_LOOP_THRESHOLD,
+  STAGE_TIME_LIMIT_SEC
 } from './constants';
 import {
   countOccupiedBubbles,
@@ -34,7 +36,7 @@ import {
   updateProjectile
 } from './physics';
 import { GameRenderer } from './renderer';
-import { getStage } from './stages';
+import { getStage, getLoopCount } from './stages';
 import {
   BubbleColor,
   Confetti,
@@ -94,6 +96,12 @@ class BubblinGame {
   private maxShotsBeforeDrop: number = 6;
   private warningTime: number = 0;
   private freezeFrames: number = 0;
+
+  // LOOP MODE lap 2+ (stage 61+): a hard per-stage time limit, wall-clock based (not frame-counted,
+  // so it stays accurate even if the tab is backgrounded / frame rate dips)
+  private stageTimeLimitMs: number = 0; // 0 = no timer this stage
+  private timeDeadlineAt: number = 0; // performance.now() deadline; host/solo/local-coop only
+  private timeRemainingMs: number = -1; // display value; -1 = timer inactive (hides the HUD)
 
   // Aiming & shooting (P1)
   private aimAngle: number = 0;
@@ -347,7 +355,8 @@ class BubblinGame {
         maxShotsBeforeDrop: this.maxShotsBeforeDrop,
         p2CurrentBubble: this.p2CurrentBubbleColor,
         p2NextBubble: this.p2NextBubbleColor,
-        p2Projectile: this.toNetProjectile(this.p2Projectile)
+        p2Projectile: this.toNetProjectile(this.p2Projectile),
+        timeRemainingMs: this.stageTimeLimitMs > 0 ? this.timeRemainingMs : -1
       }
     };
 
@@ -458,6 +467,8 @@ class BubblinGame {
       soundManager.playWarning();
       this.warningTime = 60;
     }
+    // LOOP MODE lap 2+ timer: host-authoritative, guest only displays it (never decides time-out itself)
+    this.timeRemainingMs = c.timeRemainingMs;
     this.ui.updateHUD(this.score, this.highScore, this.currentStageId, this.shotsBeforeDrop, this.maxShotsBeforeDrop);
 
     // Phase
@@ -1235,6 +1246,17 @@ class BubblinGame {
     this.warningTime = 0;
     this.shotsBeforeDrop = this.currentStageData.shotsBeforeDrop;
     this.maxShotsBeforeDrop = this.currentStageData.shotsBeforeDrop;
+
+    // LOOP MODE lap 2+ (stage 61+): a hard per-stage time limit on top of the hidden aim guide
+    if (getLoopCount(stageId) >= TIME_LIMIT_LOOP_THRESHOLD) {
+      this.stageTimeLimitMs = STAGE_TIME_LIMIT_SEC * 1000;
+      this.timeDeadlineAt = performance.now() + this.stageTimeLimitMs;
+      this.timeRemainingMs = this.stageTimeLimitMs;
+    } else {
+      this.stageTimeLimitMs = 0;
+      this.timeDeadlineAt = 0;
+      this.timeRemainingMs = -1;
+    }
 
     // Load layout
     const layout = this.currentStageData.layout;
@@ -2028,6 +2050,7 @@ class BubblinGame {
   }
 
   private gameOver(): void {
+    if (this.state !== 'PLAYING') return; // already resolved this tick (e.g. ceiling deadline + time limit at once)
     this.state = 'GAME_OVER';
     soundManager.stopBgm();
     soundManager.playGameOver();
@@ -2099,6 +2122,16 @@ class BubblinGame {
         if (this.keyRightP2) {
           this.p2AimAngle = Math.min(MAX_AIM_ANGLE, this.p2AimAngle + 0.035);
         }
+      }
+    }
+
+    // LOOP MODE lap 2+: hard per-stage time limit. Reached here only by solo / local CO-OP /
+    // online CO-OP host (guests and spectators already returned above) and VERSUS, where
+    // stageTimeLimitMs is always 0 since VERSUS never advances past its fixed hard stages.
+    if (this.state === 'PLAYING' && this.stageTimeLimitMs > 0) {
+      this.timeRemainingMs = Math.max(0, this.timeDeadlineAt - performance.now());
+      if (this.timeRemainingMs <= 0) {
+        this.gameOver();
       }
     }
 
@@ -2211,16 +2244,19 @@ class BubblinGame {
 
   private render(): void {
     if (this.isSpectating() && this.playMode === 'VERSUS') {
+      this.ui.updateTimer(-1); // spectators don't get a LOOP-MODE timer readout
       this.renderRemoteBoard(this.renderer, this.specLeft);
       if (this.opponentRenderer) this.renderRemoteBoard(this.opponentRenderer, this.specRight);
       return;
     }
 
+    this.ui.updateTimer(this.timeRemainingMs);
+
     let trajectory = null;
     const isCoop = this.playMode === 'COOP';
 
     // LOOP MODE (after clearing stage 30): hide the aiming guide for extra difficulty
-    const showGuide = this.currentStageId <= 30;
+    const showGuide = getLoopCount(this.currentStageId) === 0;
 
     const p1LauncherX = isCoop ? LAUNCHER_COOP_P1_X : LAUNCHER_X;
     if (showGuide && this.state === 'PLAYING' && !this.projectile) {
@@ -2292,7 +2328,7 @@ class BubblinGame {
     if (!this.opponentRenderer) return;
 
     // LOOP MODE (after clearing stage 30): hide the aiming guide for extra difficulty
-    const showGuide = this.currentStageId <= 30;
+    const showGuide = getLoopCount(this.currentStageId) === 0;
     let trajectory = null;
     if (showGuide && this.state === 'PLAYING' && !this.p2Projectile) {
       trajectory = calculateTrajectory(

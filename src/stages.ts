@@ -575,11 +575,16 @@ function addFillerRows(
   }
 }
 
+/** Which LOOP MODE lap `id` falls on: 0 for stages 1-30, 1 for 31-60, 2 for 61-90, etc. */
+export function getLoopCount(id: number): number {
+  return Math.floor((id - 1) / STAGES.length);
+}
+
 export function getStage(id: number): StageData {
   const index = (id - 1) % STAGES.length;
   const base = STAGES[index];
   // After beating all 30 stages (LOOP MODE) every lap gets harder still
-  const loopCount = Math.floor((id - 1) / STAGES.length);
+  const loopCount = getLoopCount(id);
 
   // 0 at stage 1 -> 1 at stage 30
   const t = (base.id - 1) / (STAGES.length - 1);

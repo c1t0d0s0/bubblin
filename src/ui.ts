@@ -3,6 +3,7 @@ import { applyStaticTranslations, currentLang, translations } from './i18n';
 import { PlayMode } from './types';
 import { networkManager } from './network';
 import { renderInviteQr } from './qr';
+import { TIME_LIMIT_DANGER_SEC } from './constants';
 
 export interface UICallbacks {
   onStartGame: () => void;
@@ -21,6 +22,8 @@ export class UIManager {
   private highScoreEl: HTMLElement;
   private stageEl: HTMLElement;
   private shotsCounterEl: HTMLElement;
+  private timeBoxEl: HTMLElement;
+  private timeValueEl: HTMLElement;
   private bgmBtn: HTMLButtonElement;
   private seBtn: HTMLButtonElement;
 
@@ -46,6 +49,8 @@ export class UIManager {
     this.highScoreEl = document.getElementById('highscore-value')!;
     this.stageEl = document.getElementById('stage-value')!;
     this.shotsCounterEl = document.getElementById('shots-dots')!;
+    this.timeBoxEl = document.getElementById('time-box')!;
+    this.timeValueEl = document.getElementById('time-value')!;
     this.bgmBtn = document.getElementById('bgm-btn') as HTMLButtonElement;
     this.seBtn = document.getElementById('se-btn') as HTMLButtonElement;
 
@@ -434,6 +439,23 @@ export class UIManager {
       dotsHtml += `<span class="${dotClass}"></span>`;
     }
     this.shotsCounterEl.innerHTML = dotsHtml;
+  }
+
+  /**
+   * LOOP MODE lap 2+: shows/updates the per-stage time-limit readout. Called every frame;
+   * a negative value means no timer is active this stage, so the HUD element stays hidden.
+   */
+  public updateTimer(remainingMs: number): void {
+    if (remainingMs < 0) {
+      this.timeBoxEl.classList.add('hidden');
+      return;
+    }
+    this.timeBoxEl.classList.remove('hidden');
+    const totalSec = Math.ceil(remainingMs / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    this.timeValueEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    this.timeBoxEl.classList.toggle('danger', totalSec <= TIME_LIMIT_DANGER_SEC);
   }
 
   public showStageClear(score: number, stageName: string, isFinalStage: boolean = false, waitForHost: boolean = false): void {

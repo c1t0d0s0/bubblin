@@ -30,6 +30,11 @@ export function getVersusStageId(game: number): number {
   return VERSUS_STAGE_IDS[i];
 }
 
+// LOOP MODE: from the second lap past stage 30 onward (loopCount >= 2), stages also carry a hard time limit
+export const TIME_LIMIT_LOOP_THRESHOLD = 2;
+export const STAGE_TIME_LIMIT_SEC = 90;
+export const TIME_LIMIT_DANGER_SEC = 10; // HUD pulses red at/under this many seconds left
+
 export const MIN_AIM_ANGLE = -Math.PI * 0.42; // ~ -75 degrees
 export const MAX_AIM_ANGLE = Math.PI * 0.42;  // ~ +75 degrees
 

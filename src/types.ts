@@ -104,6 +104,7 @@ export interface CoopSnapshot {
   p2CurrentBubble: BubbleColor;
   p2NextBubble: BubbleColor;
   p2Projectile: NetworkProjectile | null;
+  timeRemainingMs: number; // -1 = no active timer this stage (loopCount < 2)
 }
 
 export interface PlayerNetworkState {

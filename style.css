@@ -137,6 +137,17 @@ body {
   color: var(--accent-gold);
 }
 
+/* LOOP MODE lap 2+ time-limit readout */
+.timer-box .stat-value {
+  color: var(--accent-cyan);
+}
+
+.timer-box.danger .stat-value {
+  color: var(--accent-pink);
+  text-shadow: 0 0 8px var(--accent-pink);
+  animation: pulse-danger 0.5s infinite alternate;
+}
+
 .header-right {
   display: flex;
   align-items: center;
