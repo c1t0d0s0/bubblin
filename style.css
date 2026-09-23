@@ -375,30 +375,112 @@ body {
 
 .title-graphic {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
   gap: 4px;
+  row-gap: 8px;
 }
 
 .bubble-title-icon {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  font-size: 1.25rem;
+  font-size: 1.4rem;
   font-weight: 900;
   font-family: 'Impact', 'Arial Black', sans-serif;
+  /* White fill + a dark simulated stroke (shadow-based, so it works everywhere, not just
+     the browsers that support -webkit-text-stroke) keeps every letter readable no matter
+     how light or saturated the bubble color behind it is. */
   color: #ffffff;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.7);
+  -webkit-text-stroke: 1.5px #14152a;
+  text-shadow:
+    -1.5px -1.5px 0 #14152a,
+     1.5px -1.5px 0 #14152a,
+    -1.5px  1.5px 0 #14152a,
+     1.5px  1.5px 0 #14152a,
+     0 2px 3px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.15);
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transform: scale(0.4);
+  animation: bubble-title-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation-delay: calc(var(--i) * 0.05s);
+}
+
+.bubble-title-icon:nth-child(1) { --i: 0; }
+.bubble-title-icon:nth-child(2) { --i: 1; }
+.bubble-title-icon:nth-child(3) { --i: 2; }
+.bubble-title-icon:nth-child(4) { --i: 3; }
+.bubble-title-icon:nth-child(5) { --i: 4; }
+.bubble-title-icon:nth-child(6) { --i: 5; }
+.bubble-title-icon:nth-child(7) { --i: 6; }
+
+@keyframes bubble-title-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble-title-icon {
+    opacity: 1;
+    transform: scale(1);
+    animation: none;
+  }
 }
 
 .bubble-title-icon.red { background: radial-gradient(circle at 35% 35%, #ff809b, #ff3366); }
 .bubble-title-icon.blue { background: radial-gradient(circle at 35% 35%, #70baff, #0088ff); }
 .bubble-title-icon.green { background: radial-gradient(circle at 35% 35%, #65efa1, #10d060); }
-.bubble-title-icon.yellow { background: radial-gradient(circle at 35% 35%, #ffe866, #ffd000); color: #402c00; }
+.bubble-title-icon.yellow { background: radial-gradient(circle at 35% 35%, #ffe866, #ffd000); }
 .bubble-title-icon.purple { background: radial-gradient(circle at 35% 35%, #d58fff, #b040ff); }
 .bubble-title-icon.orange { background: radial-gradient(circle at 35% 35%, #ffb760, #ff8800); }
+
+/* A typed apostrophe is just a thin stroke and disappears next to bold round letters at any size,
+   so it's drawn as a little gold droplet bubble instead — reads clearly and doubles as a cute
+   "popped-off bubble" flourish that fits the theme better than punctuation would. */
+.bubble-title-apostrophe {
+  align-self: flex-start;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0 1px;
+  background: radial-gradient(circle at 35% 35%, #fff3b8, var(--accent-gold));
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50% 50% 50% 4px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: scale(0.4) rotate(-45deg);
+  animation: bubble-title-drop-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation-delay: 0.4s;
+}
+
+@keyframes bubble-title-drop-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-45deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-45deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble-title-apostrophe {
+    opacity: 1;
+    transform: rotate(-45deg);
+    animation: none;
+  }
+}
 
 .subtitle {
   font-size: 0.88rem;
